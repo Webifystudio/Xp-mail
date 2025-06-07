@@ -4,7 +4,7 @@
 import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { getForm, FormSchemaForFirestore, saveFormResponse } from '@/services/formService';
-import type { Question } from '@/app/forms/create/page'; // Ensure Question type is available
+import type { Question } from '@/app/forms/create/page'; 
 import type { Timestamp } from 'firebase/firestore';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
@@ -16,14 +16,15 @@ import { Button } from '@/components/ui/button';
 import { Spinner } from '@/components/ui/spinner';
 import { AlertTriangle } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-
+import { sendFormSubmissionEmail } from '@/actions/sendFormEmail'; // Import the server action
 
 interface PublicFormDisplayData extends Omit<FormSchemaForFirestore, 'createdAt' | 'questions' | 'title'> {
   id: string; 
   title: string; 
-  questions: Question[]; // Use the imported Question type
+  questions: Question[]; 
   createdAt: Timestamp | string;
   backgroundImageUrl?: string | null;
+  receiverEmail?: string; // Added receiverEmail
 }
 
 function PublicFormLayout({ children, backgroundImageUrl }: { children: React.ReactNode; backgroundImageUrl?: string | null; }) {
@@ -90,6 +91,7 @@ export default function PublicFormPage() {
               title: data.title || 'Untitled Form', 
               questions: typedQuestions, 
               backgroundImageUrl: data.backgroundImageUrl || null, 
+              receiverEmail: data.receiverEmail || undefined,
             };
             setForm(processedForm);
           } else {
@@ -132,12 +134,34 @@ export default function PublicFormPage() {
       await saveFormResponse(formId, formResponses);
       console.log('Form Responses Saved:', formResponses);
       setSubmissionMessage('Thank you! Your form has been submitted successfully.');
+      
+
+      if (form.receiverEmail && form.title) {
+        const emailResult = await sendFormSubmissionEmail({
+          to: form.receiverEmail,
+          formTitle: form.title,
+          responseData: formResponses,
+        });
+        if (emailResult.success) {
+          console.log("Submission notification email sent.");
+          // Optionally, add a toast for email success if desired, but primary message is submission success.
+        } else {
+          console.warn("Failed to send submission notification email:", emailResult.message);
+          // Optionally, inform admin or log this more formally. Don't show error to user if form submission itself was successful.
+           toast({
+            title: "Notification Issue",
+            description: "Form submitted, but notification email could not be sent. " + emailResult.message,
+            variant: "default", // Not "destructive" for user if form is saved
+            duration: 7000,
+          });
+        }
+      }
       setFormResponses({}); // Clear responses after successful submission
     } catch (submissionError) {
       console.error("Failed to submit form response:", submissionError);
       const errMsg = submissionError instanceof Error ? submissionError.message : "Could not submit your response. Please try again.";
       toast({ title: "Submission Failed", description: errMsg, variant: "destructive" });
-      setSubmissionMessage(`Error: ${errMsg}`); // Show error to user as well
+      setSubmissionMessage(`Error: ${errMsg}`); 
     } finally {
       setIsSubmitting(false);
     }
@@ -258,7 +282,7 @@ export default function PublicFormPage() {
                       value={formResponses[q.id || q.text] || ''}
                     />
                   )}
-                  {q.type === 'textarea' && ( // Assuming you might add textarea type
+                  {q.type === 'textarea' && ( 
                      <Textarea
                       id={q.id || q.text}
                       required={q.isRequired}

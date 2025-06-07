@@ -39,6 +39,7 @@ export interface FormSchemaForFirestore {
   createdAt: Timestamp; // Always Timestamp when dealing with Firestore directly
   publishedLinkPath?: string;
   backgroundImageUrl?: string | null; // Allow null
+  receiverEmail?: string; // Email to send notifications to
 }
 
 // Interface for form data when used in components, createdAt might be string
@@ -53,7 +54,7 @@ export interface FormResponseData {
 }
 
 
-export async function saveForm(userId: string, formData: { title: string; questions: Question[]; backgroundImageUrl?: string; }): Promise<string> {
+export async function saveForm(userId: string, formData: { title: string; questions: Question[]; backgroundImageUrl?: string; receiverEmail?: string; }): Promise<string> {
   try {
     const docRef = await addDoc(collection(db, 'forms'), {
       userId,
@@ -64,6 +65,7 @@ export async function saveForm(userId: string, formData: { title: string; questi
         options: q.options?.map(opt => ({ ...opt, id: opt.id || crypto.randomUUID() }))
       })),
       backgroundImageUrl: formData.backgroundImageUrl || null,
+      receiverEmail: formData.receiverEmail || null,
       createdAt: serverTimestamp(),
     });
     console.log('Form saved with ID: ', docRef.id);
@@ -80,7 +82,12 @@ export async function getForm(formId: string): Promise<FormSchemaForFirestore | 
     const formDocSnap = await getDoc(formDocRef);
 
     if (formDocSnap.exists()) {
-      return { id: formDocSnap.id, ...formDocSnap.data() } as FormSchemaForFirestore;
+      const data = formDocSnap.data();
+      return { 
+        id: formDocSnap.id, 
+        ...data,
+        receiverEmail: data.receiverEmail || undefined // Ensure receiverEmail is part of the return
+      } as FormSchemaForFirestore;
     } else {
       console.log('No such document for formId:', formId);
       return null;
@@ -135,7 +142,7 @@ export async function deleteForm(formId: string, userId: string): Promise<void> 
   }
 }
 
-export async function updateForm(formId: string, userId: string, formData: { title: string; questions: Question[]; backgroundImageUrl?: string | null; }): Promise<void> {
+export async function updateForm(formId: string, userId: string, formData: { title: string; questions: Question[]; backgroundImageUrl?: string | null; receiverEmail?: string | null; }): Promise<void> {
   try {
     const formDocRef = doc(db, 'forms', formId);
     const formDocSnap = await getDoc(formDocRef);
@@ -157,7 +164,8 @@ export async function updateForm(formId: string, userId: string, formData: { tit
         options: q.options?.map(opt => ({ ...opt, id: opt.id || crypto.randomUUID() }))
       })),
       backgroundImageUrl: formData.backgroundImageUrl === undefined ? null : formData.backgroundImageUrl, 
-      updatedAt: serverTimestamp() // Good practice to add an updatedAt timestamp
+      receiverEmail: formData.receiverEmail === undefined ? null : formData.receiverEmail,
+      updatedAt: serverTimestamp() 
     });
     console.log('Form updated successfully: ', formId);
   } catch (error) {
@@ -203,9 +211,6 @@ export async function getTotalSubmissionsForUser(userId: string): Promise<number
     return totalSubmissions;
   } catch (error) {
     console.error('Error getting total submissions for user:', userId, error);
-    // Don't throw an error that breaks the dashboard, just return 0 or current count
-    // Or rethrow if this data is critical and should halt rendering
-    // For now, return the count accumulated so far or 0 if it's early in the process
     return totalSubmissions > 0 ? totalSubmissions : 0; 
   }
 }

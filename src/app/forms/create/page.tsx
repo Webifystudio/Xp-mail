@@ -18,7 +18,7 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "
 import { useForm, useFieldArray, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
-import { PlusCircle, Trash2, GripVertical, AlertCircle, UploadCloud, Image as ImageIcon } from "lucide-react";
+import { PlusCircle, Trash2, GripVertical, AlertCircle, UploadCloud, Image as ImageIcon, Mail as MailIcon } from "lucide-react";
 import { Spinner } from "@/components/ui/spinner";
 import { saveForm } from "@/services/formService";
 import { useToast } from "@/hooks/use-toast";
@@ -48,6 +48,7 @@ export type Question = z.infer<typeof questionSchema>;
 
 const formBuilderSchema = z.object({
   title: z.string().min(1, "Form title is required"),
+  receiverEmail: z.string().email("Invalid email address.").optional().or(z.literal('')), // Optional, but if provided, must be valid email
   questions: z.array(questionSchema).min(1, "Add at least one question to the form."),
   backgroundImageUrl: z.string().url("Must be a valid URL").optional().nullable(),
 });
@@ -68,6 +69,7 @@ export default function CreateFormPage() {
     resolver: zodResolver(formBuilderSchema),
     defaultValues: {
       title: "",
+      receiverEmail: "",
       questions: [{ text: "", type: "text", options: [], isRequired: false }],
       backgroundImageUrl: null,
     },
@@ -139,13 +141,15 @@ export default function CreateFormPage() {
           id: q.id || crypto.randomUUID(),
           options: q.options?.map(opt => ({ ...opt, id: opt.id || crypto.randomUUID() }))
         })),
-        backgroundImageUrl: data.backgroundImageUrl || undefined, // Ensure it's undefined if null/empty
+        backgroundImageUrl: data.backgroundImageUrl || undefined, 
+        receiverEmail: data.receiverEmail || undefined,
       };
       const formId = await saveForm(user.uid, processedData);
       setFormLink(`/form/${formId}`);
       toast({ title: "Form Created!", description: "Your form has been saved successfully." });
-      form.reset(); // Reset form
-      form.setValue("backgroundImageUrl", null); // Explicitly reset background image URL display
+      form.reset(); 
+      form.setValue("backgroundImageUrl", null); 
+      form.setValue("receiverEmail", "");
     } catch (error) {
       console.error("Failed to save form:", error);
       toast({ title: "Error", description: (error as Error).message || "Could not save the form. Please try again.", variant: "destructive" });
@@ -161,7 +165,7 @@ export default function CreateFormPage() {
       <Card className="shadow-xl">
         <CardHeader>
           <CardTitle className="text-3xl font-headline">Create New Form</CardTitle>
-          <CardDescription>Design your custom form. Add a title, questions, and optionally a background image.</CardDescription>
+          <CardDescription>Design your custom form. Add a title, questions, and optionally a background image and notification email.</CardDescription>
         </CardHeader>
         <CardContent>
           {formLink && (
@@ -188,7 +192,29 @@ export default function CreateFormPage() {
                 )}
               />
 
-              {/* Background Image Section */}
+              <FormField
+                control={form.control}
+                name="receiverEmail"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="text-lg font-semibold flex items-center">
+                      <MailIcon className="mr-2 h-5 w-5 text-primary" /> Email for Notifications (Optional)
+                    </FormLabel>
+                    <FormControl>
+                      <Input 
+                        type="email" 
+                        placeholder="e.g., your-team@example.com" 
+                        {...field} 
+                        value={field.value || ""} 
+                        className="text-base" 
+                       />
+                    </FormControl>
+                    <FormMessage />
+                    <p className="text-xs text-muted-foreground mt-1">If provided, form submissions will be sent to this email.</p>
+                  </FormItem>
+                )}
+              />
+              
               <Card className="p-4 bg-muted/30">
                 <CardHeader className="p-0 pb-3">
                     <CardTitle className="text-lg font-semibold flex items-center">
@@ -292,7 +318,6 @@ export default function CreateFormPage() {
                             <Select 
                                 onValueChange={(value) => {
                                     field.onChange(value);
-                                    // Reset options if type changes from multiple-choice/checkbox
                                     if (value !== 'multiple-choice' && value !== 'checkbox') {
                                         form.setValue(`questions.${index}.options`, []);
                                     }
