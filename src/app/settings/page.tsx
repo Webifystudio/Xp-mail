@@ -1,6 +1,4 @@
 
-"use client";
-
 import { AppLayout } from "@/components/layout/AppLayout";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Settings as SettingsIcon, UserCircle, Bell, Shield } from "lucide-react";
