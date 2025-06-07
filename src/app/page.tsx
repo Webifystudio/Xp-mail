@@ -1,32 +1,39 @@
+
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState, ChangeEvent } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/hooks/useAuth";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Mail, User, LayoutDashboard, Edit3 } from "lucide-react";
+import { Mail, User, LayoutDashboard, Edit3, UploadCloud, AlertCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
+import { Input } from "@/components/ui/input";
+import { useToast } from "@/hooks/use-toast";
+import { uploadToImgBB } from "@/services/imageService";
+
+// ImgBB API Key - WARNING: DO NOT EXPOSE IN PRODUCTION CLIENT-SIDE CODE
+// Move this to a secure backend (e.g., Firebase Cloud Function) for production.
+const IMG_BB_API_KEY = "2bb2346a6a907388d8a3b0beac2bca86";
+
 
 export default function DashboardPage() {
-  const { user, username, loading: authLoading } = useAuth();
+  const { user, username, loading: authLoading, updateUserProfilePhoto } = useAuth();
   const router = useRouter();
+  const { toast } = useToast();
+
+  const [profileImageFile, setProfileImageFile] = useState<File | null>(null);
+  const [isUploadingProfileImage, setIsUploadingProfileImage] = useState(false);
+  const [profileImageError, setProfileImageError] = useState<string | null>(null);
+
 
   useEffect(() => {
     if (!authLoading && !user) {
       router.push("/login");
     }
   }, [user, authLoading, router]);
-
-  if (authLoading || !user) {
-    return (
-      <div className="flex min-h-screen items-center justify-center">
-        <Spinner size={48} />
-      </div>
-    );
-  }
 
   const getInitials = (name?: string | null, email?: string | null) => {
     if (name) {
@@ -37,6 +44,57 @@ export default function DashboardPage() {
     }
     return 'U';
   };
+
+  const handleProfileImageSelect = (event: ChangeEvent<HTMLInputElement>) => {
+    if (event.target.files && event.target.files[0]) {
+      setProfileImageFile(event.target.files[0]);
+      setProfileImageError(null);
+    }
+  };
+
+  const handleProfileImageUpload = async () => {
+    if (!profileImageFile) {
+      setProfileImageError("Please select an image file first.");
+      return;
+    }
+    if (!user) {
+      setProfileImageError("You must be logged in to upload a profile picture.");
+      return;
+    }
+
+    setIsUploadingProfileImage(true);
+    setProfileImageError(null);
+
+    try {
+      const imageUrl = await uploadToImgBB(IMG_BB_API_KEY, profileImageFile);
+      await updateUserProfilePhoto(imageUrl);
+      toast({
+        title: "Profile Picture Updated!",
+        description: "Your new profile picture has been saved.",
+      });
+      setProfileImageFile(null); // Clear the selection
+    } catch (error) {
+      console.error("Profile image upload error:", error);
+      const errorMessage = error instanceof Error ? error.message : "An unknown error occurred.";
+      setProfileImageError(`Upload failed: ${errorMessage}`);
+      toast({
+        title: "Upload Failed",
+        description: `Could not update profile picture: ${errorMessage}`,
+        variant: "destructive",
+      });
+    } finally {
+      setIsUploadingProfileImage(false);
+    }
+  };
+
+
+  if (authLoading || !user) {
+    return (
+      <div className="flex min-h-screen items-center justify-center">
+        <Spinner size={48} />
+      </div>
+    );
+  }
   
   return (
     <AppLayout>
@@ -55,10 +113,40 @@ export default function DashboardPage() {
                 <Mail className="w-4 h-4 mr-2" /> {user.email}
               </CardDescription>
             </CardHeader>
-            <CardContent className="text-center">
-               <Button variant="outline" className="w-full">
-                <User className="w-4 h-4 mr-2" /> Edit Profile
+            <CardContent className="space-y-4">
+               {/* <Button variant="outline" className="w-full">
+                <User className="w-4 h-4 mr-2" /> Edit Profile Details (Not Implemented)
+              </Button> */}
+              
+              <div className="space-y-2">
+                <Label htmlFor="profile-image-upload" className="text-sm font-medium">Update Profile Picture</Label>
+                <Input 
+                  id="profile-image-upload" 
+                  type="file" 
+                  accept="image/*" 
+                  onChange={handleProfileImageSelect}
+                  className="text-sm" 
+                />
+                {profileImageFile && <p className="text-xs text-muted-foreground">Selected: {profileImageFile.name}</p>}
+              </div>
+
+              {profileImageError && (
+                <p className="text-sm text-destructive flex items-center">
+                  <AlertCircle className="w-4 h-4 mr-1 shrink-0" /> {profileImageError}
+                </p>
+              )}
+
+              <Button 
+                onClick={handleProfileImageUpload} 
+                disabled={!profileImageFile || isUploadingProfileImage}
+                className="w-full"
+              >
+                {isUploadingProfileImage ? <Spinner className="mr-2" size={16} /> : <UploadCloud className="mr-2 h-4 w-4" />}
+                {isUploadingProfileImage ? "Uploading..." : "Upload Picture"}
               </Button>
+              <p className="text-xs text-muted-foreground text-center">
+                Images uploaded via ImgBB. Review their terms.
+              </p>
             </CardContent>
           </Card>
         </div>
@@ -92,3 +180,4 @@ export default function DashboardPage() {
     </AppLayout>
   );
 }
+

@@ -1,9 +1,10 @@
 
 "use client";
 
-import type { ReactNode } from 'react';
+import type { ReactNode, ChangeEvent } from 'react';
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import Image from 'next/image';
 import { useAuth } from "@/hooks/useAuth";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { Button } from "@/components/ui/button";
@@ -17,20 +18,25 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "
 import { useForm, useFieldArray, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
-import { PlusCircle, Trash2, GripVertical, AlertCircle } from "lucide-react";
+import { PlusCircle, Trash2, GripVertical, AlertCircle, UploadCloud, Image as ImageIcon } from "lucide-react";
 import { Spinner } from "@/components/ui/spinner";
 import { saveForm } from "@/services/formService";
 import { useToast } from "@/hooks/use-toast";
 import Link from "next/link";
+import { uploadToImgBB } from '@/services/imageService';
+
+// ImgBB API Key - WARNING: DO NOT EXPOSE IN PRODUCTION CLIENT-SIDE CODE
+// Move this to a secure backend (e.g., Firebase Cloud Function) for production.
+const IMG_BB_API_KEY = "2bb2346a6a907388d8a3b0beac2bca86";
 
 const questionOptionSchema = z.object({
-  id: z.string().optional(), // Keep optional for new options
+  id: z.string().optional(),
   value: z.string().min(1, "Option value cannot be empty"),
 });
 export type QuestionOption = z.infer<typeof questionOptionSchema>;
 
 const questionSchema = z.object({
-  id: z.string().optional(), // Keep optional for new questions
+  id: z.string().optional(),
   text: z.string().min(1, "Question text is required"),
   type: z.enum(["text", "email", "number", "multiple-choice", "checkbox"], {
     required_error: "Question type is required",
@@ -43,21 +49,27 @@ export type Question = z.infer<typeof questionSchema>;
 const formBuilderSchema = z.object({
   title: z.string().min(1, "Form title is required"),
   questions: z.array(questionSchema).min(1, "Add at least one question to the form."),
+  backgroundImageUrl: z.string().url("Must be a valid URL").optional().nullable(),
 });
 type FormBuilderValues = z.infer<typeof formBuilderSchema>;
 
 export default function CreateFormPage() {
-  const { user, loading: authLoading } = useAuth(); // Fixed typo here
+  const { user, loading: authLoading } = useAuth();
   const router = useRouter();
   const { toast } = useToast();
   const [formLink, setFormLink] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const [bgImageFile, setBgImageFile] = useState<File | null>(null);
+  const [isUploadingBg, setIsUploadingBg] = useState(false);
+  const [bgImageError, setBgImageError] = useState<string | null>(null);
 
   const form = useForm<FormBuilderValues>({
     resolver: zodResolver(formBuilderSchema),
     defaultValues: {
       title: "",
       questions: [{ text: "", type: "text", options: [], isRequired: false }],
+      backgroundImageUrl: null,
     },
   });
 
@@ -71,6 +83,36 @@ export default function CreateFormPage() {
       router.push("/login");
     }
   }, [user, authLoading, router]);
+
+
+  const handleBgImageSelect = (event: ChangeEvent<HTMLInputElement>) => {
+    if (event.target.files && event.target.files[0]) {
+      setBgImageFile(event.target.files[0]);
+      setBgImageError(null);
+    }
+  };
+
+  const handleBgImageUpload = async () => {
+    if (!bgImageFile) {
+      setBgImageError("Please select an image file first.");
+      return;
+    }
+    setIsUploadingBg(true);
+    setBgImageError(null);
+    try {
+      const imageUrl = await uploadToImgBB(IMG_BB_API_KEY, bgImageFile);
+      form.setValue("backgroundImageUrl", imageUrl);
+      toast({ title: "Background Image Uploaded!", description: "The image is ready to be saved with the form." });
+      setBgImageFile(null); // Clear selection
+    } catch (error) {
+      const errMsg = error instanceof Error ? error.message : "Unknown error during upload.";
+      setBgImageError(errMsg);
+      toast({ title: "Background Upload Failed", description: errMsg, variant: "destructive" });
+    } finally {
+      setIsUploadingBg(false);
+    }
+  };
+
 
   if (authLoading || !user) {
     return (
@@ -90,19 +132,20 @@ export default function CreateFormPage() {
     setIsSubmitting(true);
     setFormLink(null);
     try {
-      // Ensure IDs are set for questions and options if not already present
       const processedData = {
         ...data,
         questions: data.questions.map(q => ({
           ...q,
           id: q.id || crypto.randomUUID(),
           options: q.options?.map(opt => ({ ...opt, id: opt.id || crypto.randomUUID() }))
-        }))
+        })),
+        backgroundImageUrl: data.backgroundImageUrl || undefined, // Ensure it's undefined if null/empty
       };
       const formId = await saveForm(user.uid, processedData);
       setFormLink(`/form/${formId}`);
       toast({ title: "Form Created!", description: "Your form has been saved successfully." });
-      form.reset(); // Reset form after successful submission
+      form.reset(); // Reset form
+      form.setValue("backgroundImageUrl", null); // Explicitly reset background image URL display
     } catch (error) {
       console.error("Failed to save form:", error);
       toast({ title: "Error", description: (error as Error).message || "Could not save the form. Please try again.", variant: "destructive" });
@@ -111,12 +154,14 @@ export default function CreateFormPage() {
     }
   };
 
+  const currentBackgroundImageUrl = form.watch("backgroundImageUrl");
+
   return (
     <AppLayout>
       <Card className="shadow-xl">
         <CardHeader>
           <CardTitle className="text-3xl font-headline">Create New Form</CardTitle>
-          <CardDescription>Design your custom form by adding a title and questions.</CardDescription>
+          <CardDescription>Design your custom form. Add a title, questions, and optionally a background image.</CardDescription>
         </CardHeader>
         <CardContent>
           {formLink && (
@@ -142,6 +187,73 @@ export default function CreateFormPage() {
                   </FormItem>
                 )}
               />
+
+              {/* Background Image Section */}
+              <Card className="p-4 bg-muted/30">
+                <CardHeader className="p-0 pb-3">
+                    <CardTitle className="text-lg font-semibold flex items-center">
+                        <ImageIcon className="mr-2 h-5 w-5 text-primary" /> Form Background Image (Optional)
+                    </CardTitle>
+                </CardHeader>
+                <CardContent className="p-0 space-y-3">
+                    <div className="space-y-1">
+                        <Label htmlFor="bg-image-upload">Upload Image</Label>
+                        <Input 
+                            id="bg-image-upload" 
+                            type="file" 
+                            accept="image/*" 
+                            onChange={handleBgImageSelect} 
+                            className="text-sm"
+                        />
+                        {bgImageFile && <p className="text-xs text-muted-foreground">Selected: {bgImageFile.name}</p>}
+                    </div>
+                    {bgImageError && (
+                        <p className="text-sm text-destructive flex items-center">
+                            <AlertCircle className="mr-1 h-4 w-4" /> {bgImageError}
+                        </p>
+                    )}
+                    <Button 
+                        type="button" 
+                        onClick={handleBgImageUpload} 
+                        disabled={!bgImageFile || isUploadingBg}
+                        variant="outline"
+                        size="sm"
+                    >
+                        {isUploadingBg ? <Spinner className="mr-2" size={16}/> : <UploadCloud className="mr-2 h-4 w-4" />}
+                        {isUploadingBg ? "Uploading..." : "Upload Background"}
+                    </Button>
+                    {currentBackgroundImageUrl && (
+                        <div className="mt-2">
+                            <Label className="text-sm">Background Preview:</Label>
+                            <div className="mt-1 w-full h-32 rounded border overflow-hidden relative bg-slate-200">
+                                <Image src={currentBackgroundImageUrl} alt="Background preview" layout="fill" objectFit="cover" />
+                            </div>
+                             <Button 
+                                type="button" 
+                                variant="link" 
+                                size="sm" 
+                                className="text-xs text-destructive p-0 h-auto mt-1"
+                                onClick={() => form.setValue("backgroundImageUrl", null)}
+                              >
+                                Remove Background Image
+                              </Button>
+                        </div>
+                    )}
+                     <FormField
+                        control={form.control}
+                        name="backgroundImageUrl"
+                        render={({ field }) => (
+                          <FormItem className="hidden"> {/* Hidden, managed by upload logic */}
+                            <FormControl>
+                              <Input {...field} type="url" />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                </CardContent>
+              </Card>
+
 
               <div className="space-y-6">
                 <h3 className="text-lg font-semibold">Questions</h3>
@@ -177,7 +289,16 @@ export default function CreateFormPage() {
                         render={({ field }) => (
                           <FormItem>
                             <FormLabel>Question Type</FormLabel>
-                            <Select onValueChange={field.onChange} defaultValue={field.value}>
+                            <Select 
+                                onValueChange={(value) => {
+                                    field.onChange(value);
+                                    // Reset options if type changes from multiple-choice/checkbox
+                                    if (value !== 'multiple-choice' && value !== 'checkbox') {
+                                        form.setValue(`questions.${index}.options`, []);
+                                    }
+                                }} 
+                                defaultValue={field.value}
+                            >
                               <FormControl>
                                 <SelectTrigger>
                                   <SelectValue placeholder="Select question type" />
@@ -238,7 +359,7 @@ export default function CreateFormPage() {
                 </Button>
               </div>
 
-              <Button type="submit" className="w-full md:w-auto" disabled={isSubmitting}>
+              <Button type="submit" className="w-full md:w-auto" disabled={isSubmitting || isUploadingBg}>
                 {isSubmitting && <Spinner className="mr-2" size={16} />}
                 Save Form
               </Button>
@@ -250,7 +371,6 @@ export default function CreateFormPage() {
   );
 }
 
-// Component for managing options for Multiple Choice and Checkbox questions
 function QuestionOptionsArray({ questionIndex, control }: { questionIndex: number; control: any }) {
   const { fields, append, remove } = useFieldArray({
     control,
@@ -270,7 +390,7 @@ function QuestionOptionsArray({ questionIndex, control }: { questionIndex: numbe
                 <FormControl>
                   <Input placeholder={`Option ${optionIndex + 1}`} {...field} />
                 </FormControl>
-                 {/* FormMessage can be added here if needed for individual option errors */}
+                 <FormMessage />
               </FormItem>
             )}
           />
@@ -279,6 +399,7 @@ function QuestionOptionsArray({ questionIndex, control }: { questionIndex: numbe
           </Button>
         </div>
       ))}
+       {fields.length === 0 && <p className="text-xs text-muted-foreground">No options added yet for this question.</p>}
       <Button
         type="button"
         variant="link"
@@ -291,4 +412,3 @@ function QuestionOptionsArray({ questionIndex, control }: { questionIndex: numbe
     </div>
   );
 }
-

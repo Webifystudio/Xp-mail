@@ -14,25 +14,35 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Button } from '@/components/ui/button';
 import { Spinner } from '@/components/ui/spinner';
 import { AlertTriangle } from 'lucide-react';
-import Link from 'next/link';
 
-// Define an interface for the form data when used in the component
-// This allows createdAt to be potentially a string after formatting, or Timestamp from Firestore
 interface PublicFormDisplayData extends Omit<FormSchemaForFirestore, 'createdAt'> {
-  createdAt: Timestamp | string; // Allow string for display purposes
+  createdAt: Timestamp | string;
+  backgroundImageUrl?: string | null; // Added for background image
 }
 
+function PublicFormLayout({ children, backgroundImageUrl }: { children: React.ReactNode; backgroundImageUrl?: string | null; }) {
+  const layoutStyle: React.CSSProperties = {};
+  if (backgroundImageUrl) {
+    layoutStyle.backgroundImage = `url(${backgroundImageUrl})`;
+    layoutStyle.backgroundSize = 'cover';
+    layoutStyle.backgroundPosition = 'center';
+    layoutStyle.backgroundAttachment = 'fixed'; // Optional: for a fixed background effect
+  }
 
-// Basic layout for public form page (no sidebar/auth needed for public view)
-function PublicFormLayout({ children }: { children: React.ReactNode }) {
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center bg-muted p-4 selection:bg-primary/20">
-      {/* Removed "Back to App" button as requested */}
+    <div 
+      className="flex min-h-screen flex-col items-center justify-center bg-muted p-4 selection:bg-primary/20"
+      style={layoutStyle}
+    >
       <div className="w-full max-w-2xl">
-        {children}
+        {/* Overlay for better readability if background image is complex */}
+        {backgroundImageUrl && <div className="absolute inset-0 bg-black/30 backdrop-blur-sm z-0"></div>}
+        <div className="relative z-10"> {/* Content should be above overlay */}
+          {children}
+        </div>
       </div>
-      <footer className="py-6 mt-8 text-center text-sm text-muted-foreground">
-        Powered by XPMail & Forms
+      <footer className="py-6 mt-8 text-center text-sm text-muted-foreground relative z-10">
+        <span className="bg-background/70 px-2 py-1 rounded">Powered by XPMail & Forms</span>
       </footer>
     </div>
   );
@@ -57,7 +67,6 @@ export default function PublicFormPage() {
       getForm(formId)
         .then((data) => {
           if (data) {
-            // Cast to PublicFormDisplayData, createdAt will be handled by display logic
             setForm(data as PublicFormDisplayData);
           } else {
             setError('Form not found. Please check the link and try again.');
@@ -90,17 +99,13 @@ export default function PublicFormPage() {
     e.preventDefault();
     setIsSubmitting(true);
     setSubmissionMessage(null);
-    // TODO: Implement submission logic (e.g., save responses to Firestore)
-    // For now, simulate a delay and show a success message
+    
+    // TODO: Implement actual submission logic (e.g., save responses to Firestore)
     await new Promise(resolve => setTimeout(resolve, 1500)); 
     
     console.log('Form Responses:', formResponses);
     setSubmissionMessage('Thank you! Your form has been submitted successfully.');
-    // TODO: Potentially reset formResponses if you want to allow multiple submissions
-    // setFormResponses({}); 
     setIsSubmitting(false);
-
-    // alert('Form submission is not yet implemented. Responses: ' + JSON.stringify(formResponses, null, 2));
   };
 
   if (loading) {
@@ -108,7 +113,7 @@ export default function PublicFormPage() {
       <PublicFormLayout>
         <div className="flex flex-col items-center justify-center h-64">
           <Spinner size={48} />
-          <p className="mt-4 text-muted-foreground">Loading form...</p>
+          <p className="mt-4 text-muted-foreground bg-background/70 px-2 py-1 rounded">Loading form...</p>
         </div>
       </PublicFormLayout>
     );
@@ -117,14 +122,13 @@ export default function PublicFormPage() {
   if (error) {
     return (
        <PublicFormLayout>
-        <Card className="shadow-lg">
+        <Card className="shadow-lg bg-card/90 backdrop-blur-sm">
           <CardHeader className="items-center">
             <AlertTriangle className="w-12 h-12 text-destructive mb-2" />
             <CardTitle className="text-2xl text-destructive">Error Loading Form</CardTitle>
           </CardHeader>
           <CardContent className="text-center">
             <p className="text-muted-foreground">{error}</p>
-            {/* No "Go to Homepage" button here since there's no "app" to go back to for public user */}
           </CardContent>
         </Card>
       </PublicFormLayout>
@@ -134,7 +138,7 @@ export default function PublicFormPage() {
   if (!form) {
      return (
        <PublicFormLayout>
-        <Card className="shadow-lg">
+        <Card className="shadow-lg bg-card/90 backdrop-blur-sm">
           <CardHeader className="items-center">
              <AlertTriangle className="w-12 h-12 text-destructive mb-2" />
             <CardTitle className="text-2xl">Form Not Found</CardTitle>
@@ -149,8 +153,8 @@ export default function PublicFormPage() {
   
   if (submissionMessage) {
     return (
-      <PublicFormLayout>
-        <Card className="shadow-xl w-full">
+      <PublicFormLayout backgroundImageUrl={form.backgroundImageUrl}>
+        <Card className="shadow-xl w-full bg-card/90 backdrop-blur-sm">
           <CardHeader>
             <CardTitle className="text-3xl font-headline text-center">{form.title}</CardTitle>
           </CardHeader>
@@ -167,8 +171,8 @@ export default function PublicFormPage() {
   }
 
   return (
-    <PublicFormLayout>
-      <Card className="shadow-xl w-full">
+    <PublicFormLayout backgroundImageUrl={form.backgroundImageUrl}>
+      <Card className="shadow-xl w-full bg-card/90 backdrop-blur-sm">
         <CardHeader>
           <CardTitle className="text-3xl font-headline text-center">{form.title}</CardTitle>
           {form.questions.length > 0 && (
@@ -182,7 +186,7 @@ export default function PublicFormPage() {
           {form.questions.length > 0 ? (
             <form onSubmit={handleSubmit} className="space-y-6">
               {form.questions.map((q) => (
-                <div key={q.id || q.text} className="p-4 border rounded-md bg-background/50 shadow-sm">
+                <div key={q.id || q.text} className="p-4 border rounded-md bg-background/70 shadow-sm backdrop-blur-xs">
                   <Label htmlFor={q.id || q.text} className="block text-md font-medium mb-2.5">
                     {q.text}
                     {q.isRequired && <span className="text-destructive ml-1">*</span>}
@@ -243,15 +247,6 @@ export default function PublicFormPage() {
                       ))}
                     </div>
                   )}
-                  {/* Example of a textarea if it were an option */}
-                  {/* {q.type === 'textarea' && (
-                    <Textarea 
-                      id={q.id || q.text} 
-                      required={q.isRequired} 
-                      onChange={(e) => handleInputChange(q.id || q.text, e.target.value)}
-                      value={formResponses[q.id || q.text] || ''}
-                    />
-                  )} */}
                 </div>
               ))}
               <Button type="submit" className="w-full text-lg py-6" disabled={isSubmitting}>
@@ -269,3 +264,4 @@ export default function PublicFormPage() {
     </PublicFormLayout>
   );
 }
+

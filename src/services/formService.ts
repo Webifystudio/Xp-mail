@@ -22,6 +22,7 @@ export interface FormSchemaForFirestore {
   questions: Question[];
   createdAt: Timestamp; // Always Timestamp when dealing with Firestore directly
   publishedLinkPath?: string;
+  backgroundImageUrl?: string; // New field for background image
 }
 
 // Interface for form data when used in components, createdAt might be string
@@ -31,7 +32,7 @@ export interface FormSchemaWithId extends FormSchemaForFirestore {
 }
 
 
-export async function saveForm(userId: string, formData: { title: string; questions: Question[] }): Promise<string> {
+export async function saveForm(userId: string, formData: { title: string; questions: Question[]; backgroundImageUrl?: string; }): Promise<string> {
   try {
     const docRef = await addDoc(collection(db, 'forms'), {
       userId,
@@ -41,6 +42,7 @@ export async function saveForm(userId: string, formData: { title: string; questi
         id: q.id || crypto.randomUUID(),
         options: q.options?.map(opt => ({ ...opt, id: opt.id || crypto.randomUUID() }))
       })),
+      backgroundImageUrl: formData.backgroundImageUrl || null,
       createdAt: serverTimestamp(),
     });
     console.log('Form saved with ID: ', docRef.id);
@@ -57,7 +59,6 @@ export async function getForm(formId: string): Promise<FormSchemaForFirestore | 
     const formDocSnap = await getDoc(formDocRef);
 
     if (formDocSnap.exists()) {
-      // Explicitly cast to FormSchemaForFirestore, assuming data structure matches
       return { id: formDocSnap.id, ...formDocSnap.data() } as FormSchemaForFirestore;
     } else {
       console.log('No such document!');
@@ -103,7 +104,6 @@ export async function deleteForm(formId: string, userId: string): Promise<void> 
     console.log('Form deleted successfully: ', formId);
   } catch (error) {
     console.error('Error deleting form: ', error);
-    // Re-throw the original error if it's one of our specific messages, or a generic one
     if (error instanceof Error && (error.message === 'Form not found.' || error.message === 'User not authorized to delete this form.')) {
       throw error;
     }
@@ -111,7 +111,7 @@ export async function deleteForm(formId: string, userId: string): Promise<void> 
   }
 }
 
-export async function updateForm(formId: string, userId: string, formData: { title: string; questions: Question[] }): Promise<void> {
+export async function updateForm(formId: string, userId: string, formData: { title: string; questions: Question[]; backgroundImageUrl?: string; }): Promise<void> {
   try {
     const formDocRef = doc(db, 'forms', formId);
     const formDocSnap = await getDoc(formDocRef);
@@ -132,7 +132,7 @@ export async function updateForm(formId: string, userId: string, formData: { tit
         id: q.id || crypto.randomUUID(),
         options: q.options?.map(opt => ({ ...opt, id: opt.id || crypto.randomUUID() }))
       })),
-      // userId and createdAt should not be updated here
+      backgroundImageUrl: formData.backgroundImageUrl || null,
     });
     console.log('Form updated successfully: ', formId);
   } catch (error) {
