@@ -11,6 +11,7 @@ import { Mail, User, LayoutDashboard, Edit3, UploadCloud, AlertCircle, BarChart3
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label"; // Added import
 import { useToast } from "@/hooks/use-toast";
 import { uploadToImgBB } from "@/services/imageService";
 import { getFormsByUser, getTotalSubmissionsForUser } from "@/services/formService"; // Import new service functions
