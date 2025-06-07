@@ -3,7 +3,8 @@
 
 import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
-import { getForm, FormSchemaForFirestore } from '@/services/formService';
+import { getForm, FormSchemaForFirestore, saveFormResponse } from '@/services/formService';
+import type { Question } from '@/app/forms/create/page'; // Ensure Question type is available
 import type { Timestamp } from 'firebase/firestore';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
@@ -14,11 +15,13 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Button } from '@/components/ui/button';
 import { Spinner } from '@/components/ui/spinner';
 import { AlertTriangle } from 'lucide-react';
+import { useToast } from '@/hooks/use-toast';
+
 
 interface PublicFormDisplayData extends Omit<FormSchemaForFirestore, 'createdAt' | 'questions' | 'title'> {
-  id: string; // Ensure id is always present on the display data
-  title: string; // Ensure title is always string
-  questions: FormSchemaForFirestore['questions']; // Keep original Question type
+  id: string; 
+  title: string; 
+  questions: Question[]; // Use the imported Question type
   createdAt: Timestamp | string;
   backgroundImageUrl?: string | null;
 }
@@ -54,6 +57,7 @@ function PublicFormLayout({ children, backgroundImageUrl }: { children: React.Re
 export default function PublicFormPage() {
   const params = useParams();
   const formId = params.formId as string;
+  const { toast } = useToast();
   const [form, setForm] = useState<PublicFormDisplayData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -69,15 +73,23 @@ export default function PublicFormPage() {
       getForm(formId)
         .then((data) => {
           if (data) {
+             const typedQuestions: Question[] = (data.questions || []).map((q: any) => ({
+              id: q.id || crypto.randomUUID(),
+              text: q.text || '',
+              type: q.type || 'text',
+              isRequired: q.isRequired || false,
+              options: (q.options || []).map((opt: any) => ({
+                id: opt.id || crypto.randomUUID(),
+                value: opt.value || '',
+              })),
+            }));
+
             const processedForm: PublicFormDisplayData = {
-              // Spread data first, then override with processed/defaulted values
               ...data, 
-              id: data.id || formId, // Ensure ID is present, fallback to param if somehow missing
-              title: data.title || 'Untitled Form', // Fallback for title
-              questions: data.questions || [], // Default to empty array if undefined/null
-              backgroundImageUrl: data.backgroundImageUrl || null, // Ensure null if falsy
-              // createdAt is fine as is from FormSchemaForFirestore (Timestamp)
-              // userId is fine as is
+              id: data.id || formId, 
+              title: data.title || 'Untitled Form', 
+              questions: typedQuestions, 
+              backgroundImageUrl: data.backgroundImageUrl || null, 
             };
             setForm(processedForm);
           } else {
@@ -109,15 +121,26 @@ export default function PublicFormPage() {
   
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!formId || !form) {
+      toast({ title: "Error", description: "Form data is not available for submission.", variant: "destructive" });
+      return;
+    }
     setIsSubmitting(true);
     setSubmissionMessage(null);
     
-    // TODO: Implement actual submission logic (e.g., save responses to Firestore)
-    await new Promise(resolve => setTimeout(resolve, 1500)); 
-    
-    console.log('Form Responses:', formResponses);
-    setSubmissionMessage('Thank you! Your form has been submitted successfully.');
-    setIsSubmitting(false);
+    try {
+      await saveFormResponse(formId, formResponses);
+      console.log('Form Responses Saved:', formResponses);
+      setSubmissionMessage('Thank you! Your form has been submitted successfully.');
+      setFormResponses({}); // Clear responses after successful submission
+    } catch (submissionError) {
+      console.error("Failed to submit form response:", submissionError);
+      const errMsg = submissionError instanceof Error ? submissionError.message : "Could not submit your response. Please try again.";
+      toast({ title: "Submission Failed", description: errMsg, variant: "destructive" });
+      setSubmissionMessage(`Error: ${errMsg}`); // Show error to user as well
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   if (loading) {
@@ -147,7 +170,7 @@ export default function PublicFormPage() {
     );
   }
 
-  if (!form) { // This check implies form is null
+  if (!form) { 
      return (
        <PublicFormLayout>
         <Card className="shadow-lg bg-card/90 backdrop-blur-sm">
@@ -163,8 +186,7 @@ export default function PublicFormPage() {
     );
   }
   
-  // If form is not null, form.questions and form.title are guaranteed by the processing step
-  if (submissionMessage) {
+  if (submissionMessage && submissionMessage.startsWith('Thank you')) {
     return (
       <PublicFormLayout backgroundImageUrl={form.backgroundImageUrl}>
         <Card className="shadow-xl w-full bg-card/90 backdrop-blur-sm">
@@ -196,6 +218,11 @@ export default function PublicFormPage() {
           )}
         </CardHeader>
         <CardContent>
+          {submissionMessage && submissionMessage.startsWith('Error:') && (
+            <div className="mb-4 p-3 bg-destructive/10 border border-destructive text-destructive rounded-md text-sm">
+              {submissionMessage}
+            </div>
+          )}
           {form.questions.length > 0 ? (
             <form onSubmit={handleSubmit} className="space-y-6">
               {form.questions.map((q) => (
@@ -226,6 +253,14 @@ export default function PublicFormPage() {
                     <Input
                       id={q.id || q.text}
                       type="number"
+                      required={q.isRequired}
+                      onChange={(e) => handleInputChange(q.id || q.text, e.target.value)}
+                      value={formResponses[q.id || q.text] || ''}
+                    />
+                  )}
+                  {q.type === 'textarea' && ( // Assuming you might add textarea type
+                     <Textarea
+                      id={q.id || q.text}
                       required={q.isRequired}
                       onChange={(e) => handleInputChange(q.id || q.text, e.target.value)}
                       value={formResponses[q.id || q.text] || ''}
