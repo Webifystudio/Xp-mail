@@ -1,3 +1,4 @@
+
 import type { ReactNode } from 'react';
 import { Header } from './Header';
 import {
@@ -10,10 +11,9 @@ import {
   SidebarMenuItem,
   SidebarMenuButton,
   SidebarInset,
-  SidebarTrigger,
 } from '@/components/ui/sidebar';
 import Link from 'next/link';
-import { LayoutDashboard, PlusSquare, FileText, Settings, LifeBuoy } from 'lucide-react';
+import { LayoutDashboard, PlusSquare, FileText, Settings, LifeBuoy, ListChecks } from 'lucide-react';
 
 interface AppLayoutProps {
   children: ReactNode;
@@ -45,30 +45,30 @@ export function AppLayout({ children }: AppLayoutProps) {
                   </Link>
                 </SidebarMenuButton>
               </SidebarMenuItem>
-              {/* Example for a future forms list page */}
-              {/* <SidebarMenuItem>
+              <SidebarMenuItem>
                 <SidebarMenuButton asChild tooltip={{children: "My Forms", side: "right", align:"center"}}>
-                  <Link href="/forms">
-                    <FileText />
+                  <Link href="/forms/my-forms">
+                    <ListChecks /> {/* Changed from FileText for variety */}
                     <span>My Forms</span>
                   </Link>
                 </SidebarMenuButton>
-              </SidebarMenuItem> */}
+              </SidebarMenuItem>
             </SidebarMenu>
           </SidebarContent>
           <SidebarFooter>
             <SidebarMenu>
-              <SidebarMenuItem>
+               {/* Removed Support for now to keep it simple */}
+              {/* <SidebarMenuItem>
                 <SidebarMenuButton asChild tooltip={{children: "Support", side: "right", align:"center"}}>
                   <Link href="#">
                     <LifeBuoy />
                     <span>Support</span>
                   </Link>
                 </SidebarMenuButton>
-              </SidebarMenuItem>
+              </SidebarMenuItem> */}
               <SidebarMenuItem>
                 <SidebarMenuButton asChild tooltip={{children: "Settings", side: "right", align:"center"}}>
-                  <Link href="#">
+                  <Link href="/settings">
                     <Settings />
                     <span>Settings</span>
                   </Link>
