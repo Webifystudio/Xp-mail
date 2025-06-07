@@ -181,7 +181,7 @@ export default function CreateFormPage() {
                   <FormItem>
                     <FormLabel className="text-lg font-semibold">Form Title</FormLabel>
                     <FormControl>
-                      <Input placeholder="e.g., Customer Feedback Survey" {...field} className="text-base" />
+                      <Input placeholder="e.g., Customer Feedback Survey" {...field} value={field.value || ""} className="text-base" />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -245,7 +245,7 @@ export default function CreateFormPage() {
                         render={({ field }) => (
                           <FormItem className="hidden"> {/* Hidden, managed by upload logic */}
                             <FormControl>
-                              <Input {...field} type="url" />
+                              <Input {...field} type="url" value={field.value || ""} />
                             </FormControl>
                             <FormMessage />
                           </FormItem>
@@ -258,7 +258,7 @@ export default function CreateFormPage() {
               <div className="space-y-6">
                 <h3 className="text-lg font-semibold">Questions</h3>
                 {questions.map((question, index) => (
-                  <Card key={question.id || index} className="p-4 space-y-4 bg-muted/50 relative">
+                  <Card key={question.id || `question-${index}`} className="p-4 space-y-4 bg-muted/50 relative">
                      <Button
                         type="button"
                         variant="ghost"
@@ -276,7 +276,7 @@ export default function CreateFormPage() {
                         <FormItem>
                           <FormLabel>Question Text</FormLabel>
                           <FormControl>
-                            <Textarea placeholder="Enter your question here" {...field} />
+                            <Textarea placeholder="Enter your question here" {...field} value={field.value || ""} />
                           </FormControl>
                           <FormMessage />
                         </FormItem>
@@ -381,14 +381,14 @@ function QuestionOptionsArray({ questionIndex, control }: { questionIndex: numbe
     <div className="space-y-3 pl-4 border-l-2 border-primary/50">
       <Label className="text-sm font-medium">Options</Label>
       {fields.map((option, optionIndex) => (
-        <div key={option.id} className="flex items-center space-x-2">
+        <div key={option.id || `option-${questionIndex}-${optionIndex}`} className="flex items-center space-x-2">
           <FormField
             control={control}
             name={`questions.${questionIndex}.options.${optionIndex}.value`}
             render={({ field }) => (
               <FormItem className="flex-grow">
                 <FormControl>
-                  <Input placeholder={`Option ${optionIndex + 1}`} {...field} />
+                  <Input placeholder={`Option ${optionIndex + 1}`} {...field} value={field.value || ""} />
                 </FormControl>
                  <FormMessage />
               </FormItem>
@@ -396,6 +396,7 @@ function QuestionOptionsArray({ questionIndex, control }: { questionIndex: numbe
           />
           <Button type="button" variant="ghost" size="icon" onClick={() => remove(optionIndex)} className="text-muted-foreground hover:text-destructive">
             <Trash2 className="h-4 w-4" />
+             <span className="sr-only">Remove Option</span>
           </Button>
         </div>
       ))}

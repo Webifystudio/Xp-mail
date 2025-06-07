@@ -22,7 +22,7 @@ export interface FormSchemaForFirestore {
   questions: Question[];
   createdAt: Timestamp; // Always Timestamp when dealing with Firestore directly
   publishedLinkPath?: string;
-  backgroundImageUrl?: string; // New field for background image
+  backgroundImageUrl?: string | null; // Allow null
 }
 
 // Interface for form data when used in components, createdAt might be string
@@ -61,11 +61,11 @@ export async function getForm(formId: string): Promise<FormSchemaForFirestore | 
     if (formDocSnap.exists()) {
       return { id: formDocSnap.id, ...formDocSnap.data() } as FormSchemaForFirestore;
     } else {
-      console.log('No such document!');
+      console.log('No such document for formId:', formId);
       return null;
     }
   } catch (error) {
-    console.error('Error fetching form: ', error);
+    console.error('Error fetching form by ID:', formId, error);
     throw new Error('Failed to fetch form.');
   }
 }
@@ -81,7 +81,11 @@ export async function getFormsByUser(userId: string): Promise<FormSchemaWithId[]
     });
     return forms;
   } catch (error) {
-    console.error('Error fetching forms by user: ', error);
+    console.error('Error fetching forms by user (UID:', userId, '):', error); // Enhanced logging
+    // Check if the error message suggests creating an index
+    if (error instanceof Error && error.message && (error.message.includes('indexes?create_composite=') || error.message.toLowerCase().includes('index'))) {
+        console.error("Firestore indexing issue suspected. Please check the Firebase console for index creation prompts related to the 'forms' collection, filtering by 'userId' and ordering by 'createdAt'.");
+    }
     throw new Error('Failed to fetch forms.');
   }
 }
@@ -103,7 +107,7 @@ export async function deleteForm(formId: string, userId: string): Promise<void> 
     await deleteDoc(formDocRef);
     console.log('Form deleted successfully: ', formId);
   } catch (error) {
-    console.error('Error deleting form: ', error);
+    console.error('Error deleting form: ', formId, error);
     if (error instanceof Error && (error.message === 'Form not found.' || error.message === 'User not authorized to delete this form.')) {
       throw error;
     }
@@ -111,7 +115,7 @@ export async function deleteForm(formId: string, userId: string): Promise<void> 
   }
 }
 
-export async function updateForm(formId: string, userId: string, formData: { title: string; questions: Question[]; backgroundImageUrl?: string; }): Promise<void> {
+export async function updateForm(formId: string, userId: string, formData: { title: string; questions: Question[]; backgroundImageUrl?: string | null; }): Promise<void> {
   try {
     const formDocRef = doc(db, 'forms', formId);
     const formDocSnap = await getDoc(formDocRef);
@@ -132,11 +136,11 @@ export async function updateForm(formId: string, userId: string, formData: { tit
         id: q.id || crypto.randomUUID(),
         options: q.options?.map(opt => ({ ...opt, id: opt.id || crypto.randomUUID() }))
       })),
-      backgroundImageUrl: formData.backgroundImageUrl || null,
+      backgroundImageUrl: formData.backgroundImageUrl === undefined ? null : formData.backgroundImageUrl, // Ensure null is saved if undefined
     });
     console.log('Form updated successfully: ', formId);
   } catch (error) {
-    console.error('Error updating form: ', error);
+    console.error('Error updating form: ', formId, error);
      if (error instanceof Error && (error.message === 'Form not found.' || error.message === 'User not authorized to update this form.')) {
       throw error;
     }

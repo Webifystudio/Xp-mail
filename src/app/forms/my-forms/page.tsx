@@ -54,8 +54,8 @@ export default function MyFormsPage() {
       const userForms = await getFormsByUser(user.uid);
       setForms(userForms);
     } catch (e) {
-      console.error("Failed to fetch forms:", e);
-      setError("Could not load your forms. Please try again later.");
+      console.error("Failed to fetch forms client-side:", e);
+      setError("Could not load your forms. Please try again later. Check server logs for more details.");
       toast({ title: "Error", description: "Could not load your forms.", variant: "destructive" });
     } finally {
       setIsLoadingForms(false);
@@ -158,7 +158,7 @@ export default function MyFormsPage() {
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
                             <Button variant="ghost" className="h-8 w-8 p-0">
-                              <span className="sr-only">Open menu</span>
+                              <span className="sr-only">Open menu for {form.title}</span>
                               <MoreHorizontal className="h-4 w-4" />
                             </Button>
                           </DropdownMenuTrigger>
@@ -182,7 +182,7 @@ export default function MyFormsPage() {
                               </AlertDialogTrigger>
                               <AlertDialogContent>
                                 <AlertDialogHeader>
-                                  <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+                                  <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
                                   <AlertDialogDescription>
                                     This action cannot be undone. This will permanently delete the form
                                     "{form.title}" and all its associated data.
