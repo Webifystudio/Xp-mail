@@ -26,7 +26,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { MoreHorizontal, Eye, Edit, Trash2, FilePlus2, AlertTriangle } from "lucide-react";
 import { Spinner } from "@/components/ui/spinner";
 import { getFormsByUser, deleteForm, FormSchemaWithId } from "@/services/formService";
-import type { Timestamp } from 'firebase/firestore';
+// No longer need Timestamp here as FormSchemaWithId expects createdAt as string
 import { useToast } from "@/hooks/use-toast";
 
 
@@ -56,14 +56,19 @@ export default function MyFormsPage() {
     } catch (e) {
       console.error("Client-side error during fetchForms:", e);
       const errorMessage = (e instanceof Error) ? e.message : "An unknown error occurred while fetching forms.";
-      // The service function getFormsByUser throws 'Failed to fetch forms.'
-      // The actual Firestore error is logged server-side.
-      setError(errorMessage + " This often indicates a missing Firestore index. Please check your server console logs (where 'npm run dev' is running) for a detailed error message from Firestore, which may include a link to create the required index.");
+      
+      let detailedErrorMessage = errorMessage;
+      if (e instanceof Error && (e.message.includes('indexes?create_composite=') || e.message.toLowerCase().includes('index'))) {
+        detailedErrorMessage = `Failed to fetch forms. Original error: ${e.message} This often indicates a missing Firestore index. Please check your server console logs (where 'npm run dev' is running) for a detailed error message from Firestore, which may include a link to create the required index.`;
+      } else {
+        detailedErrorMessage = `Failed to fetch forms. Original error: ${errorMessage}`;
+      }
+      setError(detailedErrorMessage);
       toast({ 
         title: "Error Fetching Forms", 
-        description: errorMessage + " Check server logs for details.", 
+        description: detailedErrorMessage, 
         variant: "destructive",
-        duration: 10000 // Show longer
+        duration: 10000 
       });
     } finally {
       setIsLoadingForms(false);
@@ -83,19 +88,14 @@ export default function MyFormsPage() {
     }
   };
 
-  const formatDate = (timestamp: Timestamp | string) => {
-    if (typeof timestamp === 'string') {
-      // If it's already a string, assume it's pre-formatted or an ISO string
-      try {
-        return format(new Date(timestamp), 'PPpp');
-      } catch {
-        return timestamp; // Fallback to original string if parsing fails
-      }
+  const formatDate = (dateString: string) => {
+    // createdAt is now always a string (ISO string)
+    if (!dateString) return 'N/A';
+    try {
+      return format(new Date(dateString), 'PPpp'); // PPpp for full date and time
+    } catch {
+      return dateString; // Fallback if parsing fails, though ISO string should parse fine
     }
-    if (timestamp && typeof timestamp.toDate === 'function') {
-      return format(timestamp.toDate(), 'PPpp'); // PPpp for full date and time
-    }
-    return 'N/A';
   };
 
   if (authLoading || (!user && !authLoading)) {
@@ -133,7 +133,7 @@ export default function MyFormsPage() {
              <div className="flex flex-col items-center justify-center py-10 bg-destructive/10 border border-destructive text-destructive rounded-md p-4">
               <AlertTriangle className="w-12 h-12 mb-2" />
               <p className="text-lg font-semibold">Error Loading Forms</p>
-              <p className="text-sm text-center">{error}</p>
+              <p className="text-sm text-center whitespace-pre-wrap">{error}</p>
               <Button variant="outline" onClick={fetchForms} className="mt-4">Try Again</Button>
             </div>
           )}

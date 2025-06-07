@@ -43,9 +43,9 @@ export interface FormSchemaForFirestore {
 }
 
 // Interface for form data when used in components, createdAt might be string
-export interface FormSchemaWithId extends FormSchemaForFirestore {
+export interface FormSchemaWithId extends Omit<FormSchemaForFirestore, 'createdAt'> {
   id: string;
-  createdAt: Timestamp | string; // Allow string for display purposes after conversion
+  createdAt: string; // Changed to string for client-side compatibility
 }
 
 export interface FormResponseData {
@@ -83,10 +83,12 @@ export async function getForm(formId: string): Promise<FormSchemaForFirestore | 
 
     if (formDocSnap.exists()) {
       const data = formDocSnap.data();
+      // Note: Here createdAt is still a Timestamp if fetched for server-side use directly.
+      // If passed to client, it would also need conversion.
       return { 
         id: formDocSnap.id, 
         ...data,
-        receiverEmail: data.receiverEmail || undefined // Ensure receiverEmail is part of the return
+        receiverEmail: data.receiverEmail || undefined 
       } as FormSchemaForFirestore;
     } else {
       console.log('No such document for formId:', formId);
@@ -105,7 +107,13 @@ export async function getFormsByUser(userId: string): Promise<FormSchemaWithId[]
     const querySnapshot = await getDocs(q);
     const forms: FormSchemaWithId[] = [];
     querySnapshot.forEach((doc) => {
-      forms.push({ id: doc.id, ...doc.data() } as FormSchemaWithId);
+      const data = doc.data() as FormSchemaForFirestore;
+      // Convert Timestamp to ISO string for client-side compatibility
+      forms.push({ 
+        ...data,
+        id: doc.id, 
+        createdAt: data.createdAt.toDate().toISOString(), // Convert Timestamp to ISO string
+      });
     });
     return forms;
   } catch (error) {
@@ -195,7 +203,7 @@ export async function saveFormResponse(formId: string, responseData: Record<stri
 export async function getTotalSubmissionsForUser(userId: string): Promise<number> {
   let totalSubmissions = 0;
   try {
-    const userForms = await getFormsByUser(userId);
+    const userForms = await getFormsByUser(userId); // This now returns forms with createdAt as string
     if (userForms.length === 0) {
       return 0;
     }
