@@ -1,3 +1,4 @@
+
 "use client";
 
 import type { ReactNode } from 'react';
@@ -46,7 +47,7 @@ const formBuilderSchema = z.object({
 type FormBuilderValues = z.infer<typeof formBuilderSchema>;
 
 export default function CreateFormPage() {
-  const { user, loading: authLoading }_ = useAuth();
+  const { user, loading: authLoading } = useAuth(); // Fixed typo here
   const router = useRouter();
   const { toast } = useToast();
   const [formLink, setFormLink] = useState<string | null>(null);
