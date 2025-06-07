@@ -54,9 +54,17 @@ export default function MyFormsPage() {
       const userForms = await getFormsByUser(user.uid);
       setForms(userForms);
     } catch (e) {
-      console.error("Failed to fetch forms client-side:", e);
-      setError("Could not load your forms. Please try again later. Check server logs for more details.");
-      toast({ title: "Error", description: "Could not load your forms.", variant: "destructive" });
+      console.error("Client-side error during fetchForms:", e);
+      const errorMessage = (e instanceof Error) ? e.message : "An unknown error occurred while fetching forms.";
+      // The service function getFormsByUser throws 'Failed to fetch forms.'
+      // The actual Firestore error is logged server-side.
+      setError(errorMessage + " This often indicates a missing Firestore index. Please check your server console logs (where 'npm run dev' is running) for a detailed error message from Firestore, which may include a link to create the required index.");
+      toast({ 
+        title: "Error Fetching Forms", 
+        description: errorMessage + " Check server logs for details.", 
+        variant: "destructive",
+        duration: 10000 // Show longer
+      });
     } finally {
       setIsLoadingForms(false);
     }
@@ -122,10 +130,10 @@ export default function MyFormsPage() {
             </div>
           )}
           {!isLoadingForms && error && (
-             <div className="flex flex-col items-center justify-center py-10 bg-destructive/10 border border-destructive text-destructive rounded-md">
+             <div className="flex flex-col items-center justify-center py-10 bg-destructive/10 border border-destructive text-destructive rounded-md p-4">
               <AlertTriangle className="w-12 h-12 mb-2" />
               <p className="text-lg font-semibold">Error Loading Forms</p>
-              <p className="text-sm">{error}</p>
+              <p className="text-sm text-center">{error}</p>
               <Button variant="outline" onClick={fetchForms} className="mt-4">Try Again</Button>
             </div>
           )}
