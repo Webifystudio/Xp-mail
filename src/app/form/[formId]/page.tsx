@@ -15,9 +15,12 @@ import { Button } from '@/components/ui/button';
 import { Spinner } from '@/components/ui/spinner';
 import { AlertTriangle } from 'lucide-react';
 
-interface PublicFormDisplayData extends Omit<FormSchemaForFirestore, 'createdAt'> {
+interface PublicFormDisplayData extends Omit<FormSchemaForFirestore, 'createdAt' | 'questions' | 'title'> {
+  id: string; // Ensure id is always present on the display data
+  title: string; // Ensure title is always string
+  questions: FormSchemaForFirestore['questions']; // Keep original Question type
   createdAt: Timestamp | string;
-  backgroundImageUrl?: string | null; // Added for background image
+  backgroundImageUrl?: string | null;
 }
 
 function PublicFormLayout({ children, backgroundImageUrl }: { children: React.ReactNode; backgroundImageUrl?: string | null; }) {
@@ -26,7 +29,7 @@ function PublicFormLayout({ children, backgroundImageUrl }: { children: React.Re
     layoutStyle.backgroundImage = `url(${backgroundImageUrl})`;
     layoutStyle.backgroundSize = 'cover';
     layoutStyle.backgroundPosition = 'center';
-    layoutStyle.backgroundAttachment = 'fixed'; // Optional: for a fixed background effect
+    layoutStyle.backgroundAttachment = 'fixed';
   }
 
   return (
@@ -35,9 +38,8 @@ function PublicFormLayout({ children, backgroundImageUrl }: { children: React.Re
       style={layoutStyle}
     >
       <div className="w-full max-w-2xl">
-        {/* Overlay for better readability if background image is complex */}
         {backgroundImageUrl && <div className="absolute inset-0 bg-black/30 backdrop-blur-sm z-0"></div>}
-        <div className="relative z-10"> {/* Content should be above overlay */}
+        <div className="relative z-10">
           {children}
         </div>
       </div>
@@ -67,14 +69,24 @@ export default function PublicFormPage() {
       getForm(formId)
         .then((data) => {
           if (data) {
-            setForm(data as PublicFormDisplayData);
+            const processedForm: PublicFormDisplayData = {
+              // Spread data first, then override with processed/defaulted values
+              ...data, 
+              id: data.id || formId, // Ensure ID is present, fallback to param if somehow missing
+              title: data.title || 'Untitled Form', // Fallback for title
+              questions: data.questions || [], // Default to empty array if undefined/null
+              backgroundImageUrl: data.backgroundImageUrl || null, // Ensure null if falsy
+              // createdAt is fine as is from FormSchemaForFirestore (Timestamp)
+              // userId is fine as is
+            };
+            setForm(processedForm);
           } else {
             setError('Form not found. Please check the link and try again.');
           }
         })
         .catch((e) => {
-          console.error(e);
-          setError('Failed to load form. It might have been moved or deleted.');
+          console.error("Error fetching or processing form:", e);
+          setError(`Failed to load form. ${e instanceof Error ? e.message : 'An unknown error occurred.'}`);
         })
         .finally(() => setLoading(false));
     }
@@ -135,7 +147,7 @@ export default function PublicFormPage() {
     );
   }
 
-  if (!form) {
+  if (!form) { // This check implies form is null
      return (
        <PublicFormLayout>
         <Card className="shadow-lg bg-card/90 backdrop-blur-sm">
@@ -151,6 +163,7 @@ export default function PublicFormPage() {
     );
   }
   
+  // If form is not null, form.questions and form.title are guaranteed by the processing step
   if (submissionMessage) {
     return (
       <PublicFormLayout backgroundImageUrl={form.backgroundImageUrl}>
@@ -264,4 +277,3 @@ export default function PublicFormPage() {
     </PublicFormLayout>
   );
 }
-
