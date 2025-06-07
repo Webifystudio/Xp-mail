@@ -132,33 +132,37 @@ export default function PublicFormPage() {
     
     try {
       await saveFormResponse(formId, formResponses);
-      console.log('Form Responses Saved:', formResponses);
+      console.log('Form Responses Saved to Firestore:', formResponses);
       setSubmissionMessage('Thank you! Your form has been submitted successfully.');
       
 
       if (form.receiverEmail && form.title) {
+        console.log(`Attempting to send email to: ${form.receiverEmail} for form: ${form.title}`);
         const emailResult = await sendFormSubmissionEmail({
           to: form.receiverEmail,
           formTitle: form.title,
           responseData: formResponses,
         });
+
+        console.log('Email send result:', emailResult);
+
         if (emailResult.success) {
-          console.log("Submission notification email sent.");
-          // Optionally, add a toast for email success if desired, but primary message is submission success.
+          console.log("Submission notification email sent successfully.");
         } else {
           console.warn("Failed to send submission notification email:", emailResult.message);
-          // Optionally, inform admin or log this more formally. Don't show error to user if form submission itself was successful.
            toast({
-            title: "Notification Issue",
-            description: "Form submitted, but notification email could not be sent. " + emailResult.message,
-            variant: "default", // Not "destructive" for user if form is saved
+            title: "Notification Email Issue",
+            description: `Form submitted, but notification email could not be sent. Reason: ${emailResult.message || 'Unknown error.'}`,
+            variant: "default", 
             duration: 7000,
           });
         }
+      } else {
+        console.log('No receiverEmail configured for this form or title is missing. Skipping email notification.', { receiverEmail: form.receiverEmail, title: form.title });
       }
-      setFormResponses({}); // Clear responses after successful submission
+      setFormResponses({}); 
     } catch (submissionError) {
-      console.error("Failed to submit form response:", submissionError);
+      console.error("Failed to submit form response to Firestore:", submissionError);
       const errMsg = submissionError instanceof Error ? submissionError.message : "Could not submit your response. Please try again.";
       toast({ title: "Submission Failed", description: errMsg, variant: "destructive" });
       setSubmissionMessage(`Error: ${errMsg}`); 
@@ -336,3 +340,5 @@ export default function PublicFormPage() {
     </PublicFormLayout>
   );
 }
+
+    

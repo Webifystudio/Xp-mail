@@ -26,37 +26,40 @@ export async function sendFormSubmissionEmail({ to, formTitle, responseData }: E
 
   if (!emailUser || !emailPass) {
     console.error('Email credentials (EMAIL_USER, EMAIL_PASS) are not configured. If you see this, the hardcoded values were removed without replacing them with environment variables.');
-    return { success: false, message: 'Email server not configured.' };
+    return { success: false, message: 'Email server not configured. Hardcoded credentials missing or process.env not set.' };
   }
 
   const transporter = nodemailer.createTransport({
-    service: 'gmail', // Or your email provider
+    service: 'gmail', 
     auth: {
       user: emailUser,
       pass: emailPass,
     },
   });
 
-  let responseHtml = `<h2>New Submission for Form: ${formTitle}</h2><ul>`;
+  let responseHtml = `<h2>New Submission for Form: ${formTitle}</h2><p>A new response has been submitted to your form.</p><h3>Response Details:</h3><ul>`;
   for (const [question, answer] of Object.entries(responseData)) {
-    responseHtml += `<li><strong>${question}:</strong> ${Array.isArray(answer) ? answer.join(', ') : answer}</li>`;
+    responseHtml += `<li><strong>${question.replace(/</g, "&lt;").replace(/>/g, "&gt;")}:</strong> ${Array.isArray(answer) ? answer.join(', ') : String(answer).replace(/</g, "&lt;").replace(/>/g, "&gt;")}</li>`;
   }
-  responseHtml += '</ul>';
+  responseHtml += '</ul><p>Thank you for using XPMail & Forms.</p>';
 
   const mailOptions = {
-    from: `"XPMail & Forms" <${emailUser}>`, // Sender address (must be the same as EMAIL_USER for Gmail)
-    to: to, // Receiver address
+    from: `"XPMail & Forms" <${emailUser}>`, 
+    to: to, 
     subject: `New Form Submission: ${formTitle}`,
     html: responseHtml,
   };
 
   try {
-    await transporter.sendMail(mailOptions);
-    console.log('Form submission email sent successfully to:', to);
+    console.log(`[sendFormSubmissionEmail] Attempting to send email to: ${to} from: ${emailUser} for form: ${formTitle}`);
+    const info = await transporter.sendMail(mailOptions);
+    console.log('Form submission email sent successfully to:', to, 'Message ID:', info.messageId);
     return { success: true, message: 'Email sent successfully.' };
   } catch (error) {
-    console.error('Failed to send form submission email:', error);
+    console.error('[sendFormSubmissionEmail] Failed to send form submission email. Error details:', error);
     const errorMessage = error instanceof Error ? error.message : 'Unknown error sending email.';
     return { success: false, message: `Failed to send email: ${errorMessage}` };
   }
 }
+
+    
