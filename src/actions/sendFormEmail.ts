@@ -10,15 +10,22 @@ interface EmailPayload {
 }
 
 export async function sendFormSubmissionEmail({ to, formTitle, responseData }: EmailPayload): Promise<{ success: boolean; message: string }> {
-  // IMPORTANT: Configure these environment variables in your hosting environment.
-  // For Gmail, EMAIL_USER is your Gmail address (e.g., xpnetwork.tech@gmail.com)
-  // and EMAIL_PASS is an App Password you generate for your Gmail account.
-  // Regular passwords often don't work due to security measures.
-  const emailUser = process.env.EMAIL_USER;
-  const emailPass = process.env.EMAIL_PASS;
+  // =====================================================================================
+  // !!! SECURITY WARNING - TEMPORARY HARDCODED CREDENTIALS !!!
+  // These credentials are hardcoded for temporary development convenience AS PER USER REQUEST.
+  // THIS IS A MAJOR SECURITY RISK and MUST NOT be used in production or committed to
+  // a shared repository with real credentials.
+  //
+  // TODO: REPLACE THESE WITH ENVIRONMENT VARIABLES IMMEDIATELY!
+  // Example using environment variables (recommended):
+  // const emailUser = process.env.EMAIL_USER;
+  // const emailPass = process.env.EMAIL_PASS;
+  // =====================================================================================
+  const emailUser = "xpnetwork.tech@gmail.com"; // <<< TEMPORARY - REPLACE WITH process.env.EMAIL_USER
+  const emailPass = "luic ekcp dfbh nakd";   // <<< TEMPORARY - REPLACE WITH process.env.EMAIL_PASS
 
   if (!emailUser || !emailPass) {
-    console.error('Email credentials (EMAIL_USER, EMAIL_PASS) are not configured in environment variables.');
+    console.error('Email credentials (EMAIL_USER, EMAIL_PASS) are not configured. If you see this, the hardcoded values were removed without replacing them with environment variables.');
     return { success: false, message: 'Email server not configured.' };
   }
 
