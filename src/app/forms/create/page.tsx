@@ -1,7 +1,7 @@
 
 "use client";
 
-import type { ReactNode, ChangeEvent } from 'react';
+import type { ChangeEvent } from 'react';
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Image from 'next/image';
@@ -14,19 +14,18 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
+import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { useForm, useFieldArray, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
-import { PlusCircle, Trash2, GripVertical, AlertCircle, UploadCloud, Image as ImageIcon, Mail as MailIcon } from "lucide-react";
+import { PlusCircle, Trash2, AlertCircle, UploadCloud, Image as ImageIcon, Mail as MailIcon, MessageSquare, Webhook } from "lucide-react";
 import { Spinner } from "@/components/ui/spinner";
 import { saveForm } from "@/services/formService";
 import { useToast } from "@/hooks/use-toast";
 import Link from "next/link";
 import { uploadToImgBB } from '@/services/imageService';
 
-// ImgBB API Key - WARNING: DO NOT EXPOSE IN PRODUCTION CLIENT-SIDE CODE
-// Move this to a secure backend (e.g., Firebase Cloud Function) for production.
 const IMG_BB_API_KEY = "2bb2346a6a907388d8a3b0beac2bca86";
 
 const questionOptionSchema = z.object({
@@ -48,10 +47,44 @@ export type Question = z.infer<typeof questionSchema>;
 
 const formBuilderSchema = z.object({
   title: z.string().min(1, "Form title is required"),
-  receiverEmail: z.string().email("Invalid email address.").optional().or(z.literal('')), // Optional, but if provided, must be valid email
   questions: z.array(questionSchema).min(1, "Add at least one question to the form."),
   backgroundImageUrl: z.string().url("Must be a valid URL").optional().nullable(),
+  notificationDestination: z.enum(["none", "email", "discord"]).default("none"),
+  receiverEmail: z.string().optional(),
+  discordWebhookUrl: z.string().optional(),
+}).superRefine((data, ctx) => {
+  if (data.notificationDestination === "email") {
+    if (!data.receiverEmail || data.receiverEmail.trim() === "") {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Email address is required for email notifications.",
+        path: ["receiverEmail"],
+      });
+    } else if (!z.string().email().safeParse(data.receiverEmail).success) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Invalid email address format.",
+        path: ["receiverEmail"],
+      });
+    }
+  }
+  if (data.notificationDestination === "discord") {
+     if (!data.discordWebhookUrl || data.discordWebhookUrl.trim() === "") {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Discord webhook URL is required for Discord notifications.",
+        path: ["discordWebhookUrl"],
+      });
+    } else if (!z.string().url().safeParse(data.discordWebhookUrl).success) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Invalid Discord webhook URL format.",
+        path: ["discordWebhookUrl"],
+      });
+    }
+  }
 });
+
 type FormBuilderValues = z.infer<typeof formBuilderSchema>;
 
 export default function CreateFormPage() {
@@ -69,9 +102,11 @@ export default function CreateFormPage() {
     resolver: zodResolver(formBuilderSchema),
     defaultValues: {
       title: "",
-      receiverEmail: "",
       questions: [{ text: "", type: "text", options: [], isRequired: false }],
       backgroundImageUrl: null,
+      notificationDestination: "none",
+      receiverEmail: "",
+      discordWebhookUrl: "",
     },
   });
 
@@ -79,6 +114,8 @@ export default function CreateFormPage() {
     control: form.control,
     name: "questions",
   });
+
+  const notificationDestination = form.watch("notificationDestination");
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -105,7 +142,7 @@ export default function CreateFormPage() {
       const imageUrl = await uploadToImgBB(IMG_BB_API_KEY, bgImageFile);
       form.setValue("backgroundImageUrl", imageUrl);
       toast({ title: "Background Image Uploaded!", description: "The image is ready to be saved with the form." });
-      setBgImageFile(null); // Clear selection
+      setBgImageFile(null); 
     } catch (error) {
       const errMsg = error instanceof Error ? error.message : "Unknown error during upload.";
       setBgImageError(errMsg);
@@ -114,7 +151,6 @@ export default function CreateFormPage() {
       setIsUploadingBg(false);
     }
   };
-
 
   if (authLoading || !user) {
     return (
@@ -133,23 +169,41 @@ export default function CreateFormPage() {
     }
     setIsSubmitting(true);
     setFormLink(null);
+
+    const processedData: any = {
+      title: data.title,
+      questions: data.questions.map(q => ({
+        ...q,
+        id: q.id || crypto.randomUUID(),
+        options: q.options?.map(opt => ({ ...opt, id: opt.id || crypto.randomUUID() }))
+      })),
+      backgroundImageUrl: data.backgroundImageUrl || undefined,
+      notificationDestination: data.notificationDestination,
+    };
+
+    if (data.notificationDestination === "email" && data.receiverEmail) {
+      processedData.receiverEmail = data.receiverEmail;
+    } else {
+      processedData.receiverEmail = undefined; 
+    }
+    if (data.notificationDestination === "discord" && data.discordWebhookUrl) {
+      processedData.discordWebhookUrl = data.discordWebhookUrl;
+    } else {
+      processedData.discordWebhookUrl = undefined;
+    }
+    
     try {
-      const processedData = {
-        ...data,
-        questions: data.questions.map(q => ({
-          ...q,
-          id: q.id || crypto.randomUUID(),
-          options: q.options?.map(opt => ({ ...opt, id: opt.id || crypto.randomUUID() }))
-        })),
-        backgroundImageUrl: data.backgroundImageUrl || undefined, 
-        receiverEmail: data.receiverEmail || undefined,
-      };
       const formId = await saveForm(user.uid, processedData);
       setFormLink(`/form/${formId}`);
       toast({ title: "Form Created!", description: "Your form has been saved successfully." });
-      form.reset(); 
-      form.setValue("backgroundImageUrl", null); 
-      form.setValue("receiverEmail", "");
+      form.reset({ 
+        title: "", 
+        questions: [{ text: "", type: "text", options: [], isRequired: false }],
+        backgroundImageUrl: null,
+        notificationDestination: "none",
+        receiverEmail: "",
+        discordWebhookUrl: ""
+      });
     } catch (error) {
       console.error("Failed to save form:", error);
       toast({ title: "Error", description: (error as Error).message || "Could not save the form. Please try again.", variant: "destructive" });
@@ -165,7 +219,7 @@ export default function CreateFormPage() {
       <Card className="shadow-xl">
         <CardHeader>
           <CardTitle className="text-3xl font-headline">Create New Form</CardTitle>
-          <CardDescription>Design your custom form. Add a title, questions, and optionally a background image and notification email.</CardDescription>
+          <CardDescription>Design your custom form. Add a title, questions, and configure notifications.</CardDescription>
         </CardHeader>
         <CardContent>
           {formLink && (
@@ -191,29 +245,105 @@ export default function CreateFormPage() {
                   </FormItem>
                 )}
               />
+              
+              <Card className="p-4 bg-muted/30">
+                <CardHeader className="p-0 pb-3">
+                    <CardTitle className="text-lg font-semibold flex items-center">
+                        <MessageSquare className="mr-2 h-5 w-5 text-primary" /> Submission Notifications
+                    </CardTitle>
+                </CardHeader>
+                <CardContent className="p-0 space-y-4">
+                    <FormField
+                        control={form.control}
+                        name="notificationDestination"
+                        render={({ field }) => (
+                            <FormItem className="space-y-2">
+                            <FormLabel>Send notifications to:</FormLabel>
+                            <FormControl>
+                                <RadioGroup
+                                onValueChange={(value) => {
+                                    field.onChange(value);
+                                    if (value !== 'email') form.setValue('receiverEmail', '');
+                                    if (value !== 'discord') form.setValue('discordWebhookUrl', '');
+                                    form.clearErrors('receiverEmail');
+                                    form.clearErrors('discordWebhookUrl');
+                                }}
+                                value={field.value}
+                                className="flex flex-col sm:flex-row sm:space-x-4 space-y-2 sm:space-y-0"
+                                >
+                                <FormItem className="flex items-center space-x-2 space-y-0">
+                                    <FormControl>
+                                    <RadioGroupItem value="none" />
+                                    </FormControl>
+                                    <FormLabel className="font-normal">None</FormLabel>
+                                </FormItem>
+                                <FormItem className="flex items-center space-x-2 space-y-0">
+                                    <FormControl>
+                                    <RadioGroupItem value="email" />
+                                    </FormControl>
+                                    <FormLabel className="font-normal flex items-center"><MailIcon className="mr-1 h-4 w-4"/>Email</FormLabel>
+                                </FormItem>
+                                <FormItem className="flex items-center space-x-2 space-y-0">
+                                    <FormControl>
+                                    <RadioGroupItem value="discord" />
+                                    </FormControl>
+                                    <FormLabel className="font-normal flex items-center"><Webhook className="mr-1 h-4 w-4"/>Discord</FormLabel>
+                                </FormItem>
+                                </RadioGroup>
+                            </FormControl>
+                            <FormMessage />
+                            </FormItem>
+                        )}
+                    />
 
-              <FormField
-                control={form.control}
-                name="receiverEmail"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel className="text-lg font-semibold flex items-center">
-                      <MailIcon className="mr-2 h-5 w-5 text-primary" /> Email for Notifications (Optional)
-                    </FormLabel>
-                    <FormControl>
-                      <Input 
-                        type="email" 
-                        placeholder="e.g., your-team@example.com" 
-                        {...field} 
-                        value={field.value || ""} 
-                        className="text-base" 
-                       />
-                    </FormControl>
-                    <FormMessage />
-                    <p className="text-xs text-muted-foreground mt-1">If provided, form submissions will be sent to this email.</p>
-                  </FormItem>
-                )}
-              />
+                    {notificationDestination === "email" && (
+                        <FormField
+                            control={form.control}
+                            name="receiverEmail"
+                            render={({ field }) => (
+                            <FormItem>
+                                <FormLabel className="flex items-center">
+                                <MailIcon className="mr-2 h-4 w-4 text-muted-foreground" /> Notification Email Address
+                                </FormLabel>
+                                <FormControl>
+                                <Input 
+                                    type="email" 
+                                    placeholder="e.g., your-team@example.com" 
+                                    {...field} 
+                                    value={field.value || ""} 
+                                />
+                                </FormControl>
+                                <FormMessage />
+                            </FormItem>
+                            )}
+                        />
+                    )}
+
+                    {notificationDestination === "discord" && (
+                        <FormField
+                            control={form.control}
+                            name="discordWebhookUrl"
+                            render={({ field }) => (
+                            <FormItem>
+                                <FormLabel className="flex items-center">
+                                <Webhook className="mr-2 h-4 w-4 text-muted-foreground" /> Discord Webhook URL
+                                </FormLabel>
+                                <FormControl>
+                                <Input 
+                                    type="url" 
+                                    placeholder="https://discord.com/api/webhooks/..." 
+                                    {...field} 
+                                    value={field.value || ""} 
+                                />
+                                </FormControl>
+                                <FormDescription>Copy this from your Discord server's integration settings.</FormDescription>
+                                <FormMessage />
+                            </FormItem>
+                            )}
+                        />
+                    )}
+                </CardContent>
+              </Card>
               
               <Card className="p-4 bg-muted/30">
                 <CardHeader className="p-0 pb-3">
@@ -269,7 +399,7 @@ export default function CreateFormPage() {
                         control={form.control}
                         name="backgroundImageUrl"
                         render={({ field }) => (
-                          <FormItem className="hidden"> {/* Hidden, managed by upload logic */}
+                          <FormItem className="hidden">
                             <FormControl>
                               <Input {...field} type="url" value={field.value || ""} />
                             </FormControl>
@@ -284,7 +414,7 @@ export default function CreateFormPage() {
               <div className="space-y-6">
                 <h3 className="text-lg font-semibold">Questions</h3>
                 {questions.map((question, index) => (
-                  <Card key={question.id || `question-${index}`} className="p-4 space-y-4 bg-muted/50 relative">
+                  <Card key={question.id || `question-${index}`} className="p-4 space-y-4 bg-card shadow-md relative">
                      <Button
                         type="button"
                         variant="ghost"
@@ -438,3 +568,4 @@ function QuestionOptionsArray({ questionIndex, control }: { questionIndex: numbe
     </div>
   );
 }
+

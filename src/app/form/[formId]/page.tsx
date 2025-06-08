@@ -6,6 +6,7 @@ import { useParams } from 'next/navigation';
 import { getForm, FormSchemaForFirestore, saveFormResponse } from '@/services/formService';
 import type { Question } from '@/app/forms/create/page'; 
 import type { Timestamp } from 'firebase/firestore';
+import type { NotificationDestination } from '@/services/formService';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
@@ -16,15 +17,18 @@ import { Button } from '@/components/ui/button';
 import { Spinner } from '@/components/ui/spinner';
 import { AlertTriangle } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import { sendFormSubmissionEmail } from '@/actions/sendFormEmail'; // Import the server action
+import { sendFormSubmissionEmail } from '@/actions/sendFormEmail';
+import { sendDiscordNotification } from '@/actions/sendDiscordNotification';
 
 interface PublicFormDisplayData extends Omit<FormSchemaForFirestore, 'createdAt' | 'questions' | 'title'> {
   id: string; 
   title: string; 
   questions: Question[]; 
-  createdAt: Timestamp | string;
+  createdAt: Timestamp | string; // Can be string after processing
   backgroundImageUrl?: string | null;
-  receiverEmail?: string; // Added receiverEmail
+  notificationDestination?: NotificationDestination;
+  receiverEmail?: string | null;
+  discordWebhookUrl?: string | null;
 }
 
 function PublicFormLayout({ children, backgroundImageUrl }: { children: React.ReactNode; backgroundImageUrl?: string | null; }) {
@@ -90,8 +94,11 @@ export default function PublicFormPage() {
               id: data.id || formId, 
               title: data.title || 'Untitled Form', 
               questions: typedQuestions, 
+              createdAt: data.createdAt, // Keep as Timestamp or convert if needed for display
               backgroundImageUrl: data.backgroundImageUrl || null, 
-              receiverEmail: data.receiverEmail || undefined,
+              notificationDestination: data.notificationDestination || "none",
+              receiverEmail: data.receiverEmail || null,
+              discordWebhookUrl: data.discordWebhookUrl || null,
             };
             setForm(processedForm);
           } else {
@@ -135,30 +142,52 @@ export default function PublicFormPage() {
       console.log('Form Responses Saved to Firestore:', formResponses);
       setSubmissionMessage('Thank you! Your form has been submitted successfully.');
       
+      console.log('Form notification config:', {
+        destination: form.notificationDestination,
+        email: form.receiverEmail,
+        webhook: form.discordWebhookUrl,
+        title: form.title
+      });
 
-      if (form.receiverEmail && form.title) {
+      if (form.notificationDestination === "email" && form.receiverEmail && form.title) {
         console.log(`Attempting to send email to: ${form.receiverEmail} for form: ${form.title}`);
         const emailResult = await sendFormSubmissionEmail({
           to: form.receiverEmail,
           formTitle: form.title,
           responseData: formResponses,
         });
-
         console.log('Email send result:', emailResult);
-
-        if (emailResult.success) {
-          console.log("Submission notification email sent successfully.");
-        } else {
-          console.warn("Failed to send submission notification email:", emailResult.message);
+        if (!emailResult.success) {
            toast({
             title: "Notification Email Issue",
-            description: `Form submitted, but notification email could not be sent. Reason: ${emailResult.message || 'Unknown error.'}`,
+            description: `Form submitted, but email notification failed: ${emailResult.message || 'Unknown error.'}`,
+            variant: "default", 
+            duration: 7000,
+          });
+        }
+      } else if (form.notificationDestination === "discord" && form.discordWebhookUrl && form.title) {
+        console.log(`Attempting to send Discord notification for form: ${form.title}`);
+        const discordResult = await sendDiscordNotification(
+            form.discordWebhookUrl,
+            form.title,
+            formResponses
+        );
+        console.log('Discord notification send result:', discordResult);
+        if (!discordResult.success) {
+           toast({
+            title: "Discord Notification Issue",
+            description: `Form submitted, but Discord notification failed: ${discordResult.message || 'Unknown error.'}`,
             variant: "default", 
             duration: 7000,
           });
         }
       } else {
-        console.log('No receiverEmail configured for this form or title is missing. Skipping email notification.', { receiverEmail: form.receiverEmail, title: form.title });
+        console.log('No valid notification configured or title missing for this form. Skipping notification.', {
+            destination: form.notificationDestination, 
+            receiverEmail: form.receiverEmail, 
+            discordWebhookUrl: form.discordWebhookUrl,
+            title: form.title 
+        });
       }
       setFormResponses({}); 
     } catch (submissionError) {
@@ -254,8 +283,8 @@ export default function PublicFormPage() {
           {form.questions.length > 0 ? (
             <form onSubmit={handleSubmit} className="space-y-6">
               {form.questions.map((q) => (
-                <div key={q.id || q.text} className="p-4 border rounded-md bg-background/70 shadow-sm backdrop-blur-xs">
-                  <Label htmlFor={q.id || q.text} className="block text-md font-medium mb-2.5">
+                <div key={q.id || q.text} className="p-5 border rounded-lg bg-background/80 shadow-lg backdrop-blur-sm transition-all hover:shadow-xl">
+                  <Label htmlFor={q.id || q.text} className="block text-md font-semibold mb-3 text-foreground">
                     {q.text}
                     {q.isRequired && <span className="text-destructive ml-1">*</span>}
                   </Label>
@@ -266,6 +295,7 @@ export default function PublicFormPage() {
                       required={q.isRequired}
                       onChange={(e) => handleInputChange(q.id || q.text, e.target.value)}
                       value={formResponses[q.id || q.text] || ''}
+                      className="bg-white/70 dark:bg-black/20"
                     />
                   )}
                   {q.type === 'email' && (
@@ -275,6 +305,7 @@ export default function PublicFormPage() {
                       required={q.isRequired}
                       onChange={(e) => handleInputChange(q.id || q.text, e.target.value)}
                       value={formResponses[q.id || q.text] || ''}
+                       className="bg-white/70 dark:bg-black/20"
                     />
                   )}
                   {q.type === 'number' && (
@@ -284,6 +315,7 @@ export default function PublicFormPage() {
                       required={q.isRequired}
                       onChange={(e) => handleInputChange(q.id || q.text, e.target.value)}
                       value={formResponses[q.id || q.text] || ''}
+                       className="bg-white/70 dark:bg-black/20"
                     />
                   )}
                   {q.type === 'textarea' && ( 
@@ -292,6 +324,7 @@ export default function PublicFormPage() {
                       required={q.isRequired}
                       onChange={(e) => handleInputChange(q.id || q.text, e.target.value)}
                       value={formResponses[q.id || q.text] || ''}
+                      className="bg-white/70 dark:bg-black/20"
                     />
                   )}
                   {q.type === 'multiple-choice' && q.options && (
@@ -299,33 +332,33 @@ export default function PublicFormPage() {
                       required={q.isRequired}
                       onValueChange={(value) => handleInputChange(q.id || q.text, value)}
                       value={formResponses[q.id || q.text] || undefined}
-                      className="space-y-1"
+                      className="space-y-2"
                     >
                       {q.options.map((opt) => (
-                        <div key={opt.id || opt.value} className="flex items-center space-x-2 p-2 hover:bg-muted/50 rounded-md transition-colors">
+                        <div key={opt.id || opt.value} className="flex items-center space-x-3 p-3 bg-white/50 dark:bg-black/10 hover:bg-primary/10 rounded-md transition-colors cursor-pointer">
                           <RadioGroupItem value={opt.value} id={`${q.id || q.text}-${opt.id || opt.value}`} />
-                          <Label htmlFor={`${q.id || q.text}-${opt.id || opt.value}`} className="font-normal cursor-pointer flex-1">{opt.value}</Label>
+                          <Label htmlFor={`${q.id || q.text}-${opt.id || opt.value}`} className="font-normal cursor-pointer flex-1 text-foreground/90">{opt.value}</Label>
                         </div>
                       ))}
                     </RadioGroup>
                   )}
                   {q.type === 'checkbox' && q.options && (
-                    <div className="space-y-1">
+                    <div className="space-y-2">
                       {q.options.map((opt) => (
-                        <div key={opt.id || opt.value} className="flex items-center space-x-2 p-2 hover:bg-muted/50 rounded-md transition-colors">
+                        <div key={opt.id || opt.value} className="flex items-center space-x-3 p-3 bg-white/50 dark:bg-black/10 hover:bg-primary/10 rounded-md transition-colors cursor-pointer">
                           <Checkbox
                             id={`${q.id || q.text}-${opt.id || opt.value}`}
                             onCheckedChange={(checked) => handleCheckboxChange(q.id || q.text, opt.value, !!checked)}
                             checked={(formResponses[q.id || q.text] || []).includes(opt.value)}
                           />
-                          <Label htmlFor={`${q.id || q.text}-${opt.id || opt.value}`} className="font-normal cursor-pointer flex-1">{opt.value}</Label>
+                          <Label htmlFor={`${q.id || q.text}-${opt.id || opt.value}`} className="font-normal cursor-pointer flex-1 text-foreground/90">{opt.value}</Label>
                         </div>
                       ))}
                     </div>
                   )}
                 </div>
               ))}
-              <Button type="submit" className="w-full text-lg py-6" disabled={isSubmitting}>
+              <Button type="submit" className="w-full text-lg py-6 mt-8 font-semibold" disabled={isSubmitting}>
                 {isSubmitting ? <Spinner className="mr-2" size={20} /> : null}
                 {isSubmitting ? 'Submitting...' : 'Submit Form'}
               </Button>
@@ -341,4 +374,3 @@ export default function PublicFormPage() {
   );
 }
 
-    

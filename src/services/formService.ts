@@ -2,14 +2,6 @@
 'use server';
 /**
  * @fileOverview Service functions for form interactions with Firestore.
- *
- * - saveForm(userId, formData) - Saves a new form to Firestore.
- * - getForm(formId) - Retrieves a form by its ID from Firestore.
- * - getFormsByUser(userId) - Retrieves all forms for a given user.
- * - deleteForm(formId, userId) - Deletes a form if the user is the owner.
- * - updateForm(formId, userId, formData) - Updates an existing form.
- * - saveFormResponse(formId, responseData) - Saves a public form submission.
- * - getTotalSubmissionsForUser(userId) - Gets total submissions for a user's forms.
  */
 
 import { db } from '@/lib/firebase';
@@ -30,23 +22,30 @@ import {
 } from 'firebase/firestore';
 import type { Question } from '@/app/forms/create/page';
 
-// Interface for data going to/coming from Firestore
+export type NotificationDestination = "none" | "email" | "discord";
+
 export interface FormSchemaForFirestore {
-  id?: string; // Firestore document ID, added after retrieval
+  id?: string; 
   userId: string;
   title: string;
   questions: Question[];
-  createdAt: Timestamp; // Always Timestamp when dealing with Firestore directly
+  createdAt: Timestamp; 
   publishedLinkPath?: string;
-  backgroundImageUrl?: string | null; // Allow null
-  receiverEmail?: string; // Email to send notifications to
+  backgroundImageUrl?: string | null;
+  notificationDestination?: NotificationDestination;
+  receiverEmail?: string | null;
+  discordWebhookUrl?: string | null;
 }
 
-// Interface for form data when used in components, createdAt might be string
-export interface FormSchemaWithId extends Omit<FormSchemaForFirestore, 'createdAt'> {
+export interface FormSchemaWithId extends Omit<FormSchemaForFirestore, 'createdAt' | 'questions'> {
   id: string;
-  createdAt: string; // Changed to string for client-side compatibility
+  questions: Question[]; // Ensure questions are part of this type for full form data
+  createdAt: string;
+  notificationDestination: NotificationDestination;
+  receiverEmail?: string | null;
+  discordWebhookUrl?: string | null;
 }
+
 
 export interface FormResponseData {
   responseData: Record<string, any>;
@@ -54,7 +53,17 @@ export interface FormResponseData {
 }
 
 
-export async function saveForm(userId: string, formData: { title: string; questions: Question[]; backgroundImageUrl?: string; receiverEmail?: string; }): Promise<string> {
+export async function saveForm(
+  userId: string, 
+  formData: { 
+    title: string; 
+    questions: Question[]; 
+    backgroundImageUrl?: string; 
+    notificationDestination?: NotificationDestination;
+    receiverEmail?: string; 
+    discordWebhookUrl?: string;
+  }
+): Promise<string> {
   try {
     const docRef = await addDoc(collection(db, 'forms'), {
       userId,
@@ -65,7 +74,9 @@ export async function saveForm(userId: string, formData: { title: string; questi
         options: q.options?.map(opt => ({ ...opt, id: opt.id || crypto.randomUUID() }))
       })),
       backgroundImageUrl: formData.backgroundImageUrl || null,
-      receiverEmail: formData.receiverEmail || null,
+      notificationDestination: formData.notificationDestination || "none",
+      receiverEmail: formData.notificationDestination === "email" ? (formData.receiverEmail || null) : null,
+      discordWebhookUrl: formData.notificationDestination === "discord" ? (formData.discordWebhookUrl || null) : null,
       createdAt: serverTimestamp(),
     });
     console.log('Form saved with ID: ', docRef.id);
@@ -83,12 +94,12 @@ export async function getForm(formId: string): Promise<FormSchemaForFirestore | 
 
     if (formDocSnap.exists()) {
       const data = formDocSnap.data();
-      // Note: Here createdAt is still a Timestamp if fetched for server-side use directly.
-      // If passed to client, it would also need conversion.
       return { 
         id: formDocSnap.id, 
         ...data,
-        receiverEmail: data.receiverEmail || undefined 
+        notificationDestination: data.notificationDestination || "none",
+        receiverEmail: data.receiverEmail || undefined,
+        discordWebhookUrl: data.discordWebhookUrl || undefined,
       } as FormSchemaForFirestore;
     } else {
       console.log('No such document for formId:', formId);
@@ -106,22 +117,36 @@ export async function getFormsByUser(userId: string): Promise<FormSchemaWithId[]
     const q = query(formsCollectionRef, where('userId', '==', userId), orderBy('createdAt', 'desc'));
     const querySnapshot = await getDocs(q);
     const forms: FormSchemaWithId[] = [];
-    querySnapshot.forEach((doc) => {
-      const data = doc.data() as FormSchemaForFirestore;
-      // Convert Timestamp to ISO string for client-side compatibility
+    querySnapshot.forEach((docSnap) => {
+      const data = docSnap.data() as FormSchemaForFirestore;
       forms.push({ 
         ...data,
-        id: doc.id, 
-        createdAt: data.createdAt.toDate().toISOString(), // Convert Timestamp to ISO string
+        id: docSnap.id,
+        questions: (data.questions || []).map((q: any) => ({ // Ensure questions are processed
+            id: q.id || crypto.randomUUID(),
+            text: q.text || '',
+            type: q.type || 'text',
+            isRequired: q.isRequired || false,
+            options: (q.options || []).map((opt: any) => ({
+            id: opt.id || crypto.randomUUID(),
+            value: opt.value || '',
+            })),
+        })),
+        createdAt: data.createdAt.toDate().toISOString(),
+        notificationDestination: data.notificationDestination || "none",
+        receiverEmail: data.receiverEmail || null,
+        discordWebhookUrl: data.discordWebhookUrl || null,
       });
     });
     return forms;
   } catch (error) {
     console.error('Error fetching forms by user (UID:', userId, '):', error);
-    if (error instanceof Error && (error.message.includes('indexes?create_composite=') || error.message.toLowerCase().includes('index'))) {
+    const originalError = error instanceof Error ? error.message : String(error);
+    if (originalError.includes('indexes?create_composite=') || originalError.toLowerCase().includes('index')) {
         console.error("Firestore indexing issue suspected. Please check the Firebase console for index creation prompts related to the 'forms' collection, filtering by 'userId' and ordering by 'createdAt'. The original error from Firestore is: ", (error as any)?.cause || error);
+         throw new Error(`Failed to fetch forms. Original error: ${originalError} This often indicates a missing Firestore index. Please check your server console logs (where 'npm run dev' is running) for a detailed error message from Firestore, which may include a link to create the required index.`);
     }
-    throw new Error(`Failed to fetch forms. Original error: ${(error as Error).message}`);
+    throw new Error(`Failed to fetch forms. Original error: ${originalError}`);
   }
 }
 
@@ -150,7 +175,18 @@ export async function deleteForm(formId: string, userId: string): Promise<void> 
   }
 }
 
-export async function updateForm(formId: string, userId: string, formData: { title: string; questions: Question[]; backgroundImageUrl?: string | null; receiverEmail?: string | null; }): Promise<void> {
+export async function updateForm(
+    formId: string, 
+    userId: string, 
+    formData: { 
+        title: string; 
+        questions: Question[]; 
+        backgroundImageUrl?: string | null; 
+        notificationDestination?: NotificationDestination;
+        receiverEmail?: string | null; 
+        discordWebhookUrl?: string | null; 
+    }
+): Promise<void> {
   try {
     const formDocRef = doc(db, 'forms', formId);
     const formDocSnap = await getDoc(formDocRef);
@@ -164,17 +200,31 @@ export async function updateForm(formId: string, userId: string, formData: { tit
       throw new Error('User not authorized to update this form.');
     }
 
-    await updateDoc(formDocRef, {
-      title: formData.title,
-      questions: formData.questions.map(q => ({
-        ...q,
-        id: q.id || crypto.randomUUID(),
-        options: q.options?.map(opt => ({ ...opt, id: opt.id || crypto.randomUUID() }))
-      })),
-      backgroundImageUrl: formData.backgroundImageUrl === undefined ? null : formData.backgroundImageUrl, 
-      receiverEmail: formData.receiverEmail === undefined ? null : formData.receiverEmail,
-      updatedAt: serverTimestamp() 
-    });
+    const updateData: Partial<FormSchemaForFirestore> = {
+        title: formData.title,
+        questions: formData.questions.map(q => ({
+            ...q,
+            id: q.id || crypto.randomUUID(),
+            options: q.options?.map(opt => ({ ...opt, id: opt.id || crypto.randomUUID() }))
+        })),
+        backgroundImageUrl: formData.backgroundImageUrl === undefined ? existingFormData.backgroundImageUrl : formData.backgroundImageUrl,
+        notificationDestination: formData.notificationDestination || existingFormData.notificationDestination || "none",
+        updatedAt: serverTimestamp() as Timestamp
+    };
+
+    if (formData.notificationDestination === "email") {
+        updateData.receiverEmail = formData.receiverEmail || null;
+        updateData.discordWebhookUrl = null; // Clear other destination
+    } else if (formData.notificationDestination === "discord") {
+        updateData.discordWebhookUrl = formData.discordWebhookUrl || null;
+        updateData.receiverEmail = null; // Clear other destination
+    } else if (formData.notificationDestination === "none") {
+        updateData.receiverEmail = null;
+        updateData.discordWebhookUrl = null;
+    }
+
+
+    await updateDoc(formDocRef, updateData);
     console.log('Form updated successfully: ', formId);
   } catch (error) {
     console.error('Error updating form: ', formId, error);
@@ -203,7 +253,7 @@ export async function saveFormResponse(formId: string, responseData: Record<stri
 export async function getTotalSubmissionsForUser(userId: string): Promise<number> {
   let totalSubmissions = 0;
   try {
-    const userForms = await getFormsByUser(userId); // This now returns forms with createdAt as string
+    const userForms = await getFormsByUser(userId); 
     if (userForms.length === 0) {
       return 0;
     }
@@ -222,3 +272,4 @@ export async function getTotalSubmissionsForUser(userId: string): Promise<number
     return totalSubmissions > 0 ? totalSubmissions : 0; 
   }
 }
+
