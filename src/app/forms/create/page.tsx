@@ -187,6 +187,9 @@ export default function CreateFormPage() {
   }
 
   const onSubmit = async (data: FormBuilderValues) => {
+    console.log("[CreateFormPage] onSubmit function entered. Data:", JSON.stringify(data, null, 2));
+    console.log("[CreateFormPage] User UID from useAuth:", user?.uid);
+
     if (!user || !user.uid) {
       toast({ title: "Authentication Error", description: "You must be logged in with a valid user ID to create a form. Please re-login if the issue persists.", variant: "destructive" });
       setIsSubmitting(false);
@@ -222,13 +225,15 @@ export default function CreateFormPage() {
       processedData.discordWebhookUrl = data.discordWebhookUrl || null;
     }
     
+    console.log("[CreateFormPage] Attempting to call saveForm with UID:", user.uid, "and processed data:", JSON.stringify(processedData, null, 2));
     try {
       const formId = await saveForm(user.uid, processedData);
       
       if (!formId) {
+        // This case should ideally be handled by saveForm throwing an error
         throw new Error("Server did not return a valid form ID.");
       }
-
+      console.log("[CreateFormPage] Form saved successfully. Form ID:", formId);
       setFormLink(`/form/${formId}`);
       toast({ title: "Form Created!", description: "Your form has been saved successfully." });
       form.reset({
@@ -244,11 +249,12 @@ export default function CreateFormPage() {
       if (fileInput) fileInput.value = '';
 
     } catch (error) {
-      console.error("Failed to save form:", error);
-      const errorMessage = error instanceof Error ? error.message : "Could not save the form. Please check console for details.";
+      console.error("[CreateFormPage] Error during saveForm call. Raw error:", error);
+      const errorMessage = error instanceof Error ? error.message : "Could not save the form. Please try again.";
       toast({ title: "Error Creating Form", description: errorMessage, variant: "destructive", duration: 9000 });
       setFormLink(null);
     } finally {
+      console.log("[CreateFormPage] onSubmit finally block reached.");
       setIsSubmitting(false);
     }
   };
@@ -613,3 +619,4 @@ function QuestionOptionsArray({ questionIndex, control }: { questionIndex: numbe
   );
 }
 
+    

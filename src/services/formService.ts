@@ -67,10 +67,15 @@ export async function saveForm(
     discordWebhookUrl?: string | null; 
   }
 ): Promise<string> {
+  console.log("[saveForm] Action entered. UserID:", userId);
+  // console.log("[saveForm] Received formData:", JSON.stringify(formData, null, 2)); // Can be very verbose
+
   if (!userId) {
+    console.error("[saveForm] User ID is missing.");
     throw new Error('User ID is missing, cannot save form.');
   }
   if (!formData || typeof formData.title === 'undefined' || formData.title.trim() === "") {
+     console.error("[saveForm] Form data or title is missing/empty.");
      throw new Error('Form data or title is missing/empty, cannot save form.');
   }
   
@@ -89,20 +94,22 @@ export async function saveForm(
       discordWebhookUrl: formData.notificationDestination === "discord" ? (formData.discordWebhookUrl || null) : null,
       createdAt: serverTimestamp() as Timestamp,
     };
+    console.log("[saveForm] Data being written to Firestore:", JSON.stringify(dataToSave, null, 2));
 
     const docRef = await addDoc(collection(db, 'forms'), dataToSave);
-    console.log('Form saved with ID: ', docRef.id);
+    console.log('[saveForm] Form saved successfully with ID: ', docRef.id);
     return docRef.id;
   } catch (error) {
-    console.error('Error saving form to Firestore:', error);
-    let errorMessage = 'Unknown error while saving form.';
+    console.error('[saveForm] Firestore error during addDoc. Raw error:', error);
+    let errorMessage = 'Unknown error while saving form to Firestore.';
     if (error instanceof Error) {
         errorMessage = error.message;
-        if ((error as any).code) {
+        if ((error as any).code) { // For Firestore error codes
             errorMessage += ` (Firestore code: ${(error as any).code})`;
         }
     }
-    throw new Error(`Failed to save form: ${errorMessage}`);
+    // Crucially, re-throw so the client's catch block is triggered
+    throw new Error(`Failed to save form in service: ${errorMessage}`);
   }
 }
 
@@ -221,7 +228,7 @@ export async function updateForm(
     }
 ): Promise<void> {
   console.log('[updateForm] Received request to update form. FormID:', formId, 'UserID:', userId);
-  console.log('[updateForm] FormData received:', JSON.stringify(formData, null, 2));
+  // console.log('[updateForm] FormData received:', JSON.stringify(formData, null, 2));
   try {
     const formDocRef = doc(db, 'forms', formId);
     const formDocSnap = await getDoc(formDocRef);
@@ -310,7 +317,7 @@ export async function getTotalSubmissionsForUser(userId: string): Promise<number
     return totalSubmissions;
   } catch (error) {
     console.error('Error getting total submissions for user:', userId, error);
-    return totalSubmissions > 0 ? totalSubmissions : 0;
+    return totalSubmissions > 0 ? totalSubmissions : 0; 
   }
 }
 
