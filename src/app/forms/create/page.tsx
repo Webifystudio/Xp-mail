@@ -2,7 +2,7 @@
 "use client";
 
 import type { ChangeEvent } from 'react';
-import { useEffect, useState } from "react"; // Ensure useEffect is imported
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Image from 'next/image';
 import { useAuth } from "@/hooks/useAuth";
@@ -16,7 +16,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import { useForm, useFieldArray, Controller } from "react-hook-form";
+import { useForm, useFieldArray } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { PlusCircle, Trash2, AlertCircle, UploadCloud, ImageIcon, Mail as MailIcon, MessageSquare, Webhook, XCircle } from "lucide-react";
@@ -111,7 +111,7 @@ export default function CreateFormPage() {
 
   const watchedNotificationDestination = form.watch("notificationDestination");
   const currentBackgroundImageUrl = form.watch("backgroundImageUrl");
-  const { setValue } = form; // Destructure setValue for stable reference
+  const { setValue } = form;
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -176,7 +176,7 @@ export default function CreateFormPage() {
     toast({ title: "Background Image Removed."});
   };
 
-  if (authLoading || !user) {
+  if (authLoading || !user && !authLoading) { // Ensure !user check is also within this condition if authLoading is false
     return (
       <AppLayout>
         <div className="flex min-h-[calc(100vh-200px)] items-center justify-center">
@@ -187,15 +187,21 @@ export default function CreateFormPage() {
   }
 
   const onSubmit = async (data: FormBuilderValues) => {
-    console.log("[CreateFormPage] onSubmit triggered. User:", user?.uid);
-    if (!user) {
-      toast({ title: "Error", description: "You must be logged in to create a form.", variant: "destructive" });
-      console.error("[CreateFormPage] User not logged in during form submission attempt.");
+    console.log("[CreateFormPage] react-hook-form handleSubmit has invoked onSubmit function.");
+    console.log("[CreateFormPage] User object in onSubmit:", user);
+    console.log("[CreateFormPage] Auth loading state in onSubmit:", authLoading);
+
+
+    if (!user || !user.uid) {
+      toast({ title: "Authentication Error", description: "You must be logged in with a valid user ID to create a form. Please re-login if the issue persists.", variant: "destructive" });
+      console.error("[CreateFormPage] User not logged in, user.uid is missing, or auth is still loading during form submission attempt. User:", user, "AuthLoading:", authLoading);
+      setIsSubmitting(false);
       return;
     }
+
     setIsSubmitting(true);
     setFormLink(null);
-    console.log("[CreateFormPage] Form data received by onSubmit:", JSON.stringify(data, null, 2));
+    console.log("[CreateFormPage] Form data received by onSubmit from react-hook-form:", JSON.stringify(data, null, 2));
 
     const processedData: {
       title: string;
@@ -211,7 +217,7 @@ export default function CreateFormPage() {
         id: q.id || crypto.randomUUID(),
         options: q.options?.map(opt => ({ ...opt, id: opt.id || crypto.randomUUID() })) || []
       })),
-      backgroundImageUrl: data.backgroundImageUrl || null,
+      backgroundImageUrl: data.backgroundImageUrl || null, // Ensure null if undefined/empty
       notificationDestination: data.notificationDestination || "none",
       receiverEmail: null, 
       discordWebhookUrl: null, 
@@ -224,10 +230,18 @@ export default function CreateFormPage() {
     }
     
     console.log("[CreateFormPage] Processed data being sent to saveForm:", JSON.stringify(processedData, null, 2));
+    console.log("[CreateFormPage] User ID being sent to saveForm:", user.uid);
 
     try {
+      console.log("[CreateFormPage] Attempting to call saveForm server action...");
       const formId = await saveForm(user.uid, processedData);
-      console.log("[CreateFormPage] Form saved successfully. Form ID:", formId);
+      console.log("[CreateFormPage] saveForm server action call completed. Form ID from server:", formId);
+      
+      if (!formId) {
+        console.error("[CreateFormPage] saveForm returned a falsy formId:", formId);
+        throw new Error("Server did not return a valid form ID.");
+      }
+
       setFormLink(`/form/${formId}`);
       toast({ title: "Form Created!", description: "Your form has been saved successfully." });
       form.reset({
@@ -241,11 +255,14 @@ export default function CreateFormPage() {
       setBgImageFile(null);
       const fileInput = document.getElementById('bg-image-upload') as HTMLInputElement;
       if (fileInput) fileInput.value = '';
+
     } catch (error) {
-      console.error("[CreateFormPage] Failed to save form. Raw error object:", error);
-      const errorMessage = error instanceof Error ? error.message : "Could not save the form. Please try again.";
-      toast({ title: "Error Saving Form", description: errorMessage, variant: "destructive", duration: 7000 });
+      console.error("[CreateFormPage] Error caught during saveForm call or subsequent client-side processing. Raw error object:", error);
+      const errorMessage = error instanceof Error ? error.message : "Could not save the form. Please check console for details.";
+      toast({ title: "Error Saving Form", description: errorMessage, variant: "destructive", duration: 9000 });
+      setFormLink(null);
     } finally {
+      console.log("[CreateFormPage] onSubmit finally block. Setting isSubmitting to false.");
       setIsSubmitting(false);
     }
   };
@@ -556,7 +573,7 @@ export default function CreateFormPage() {
                 </Button>
               </div>
 
-              <Button type="submit" className="w-full md:w-auto" disabled={isSubmitting || isUploadingBg}>
+              <Button type="submit" className="w-full md:w-auto" disabled={isSubmitting || isUploadingBg || authLoading}>
                 {isSubmitting && <Spinner className="mr-2" size={16} />}
                 Save Form
               </Button>
@@ -609,3 +626,4 @@ function QuestionOptionsArray({ questionIndex, control }: { questionIndex: numbe
     </div>
   );
 }
+

@@ -61,14 +61,23 @@ export async function saveForm(
   formData: {
     title: string;
     questions: Question[];
-    backgroundImageUrl?: string | null; // Explicitly allow null
+    backgroundImageUrl?: string | null; 
     notificationDestination?: NotificationDestination;
-    receiverEmail?: string | null; // Explicitly allow null
-    discordWebhookUrl?: string | null; // Explicitly allow null
+    receiverEmail?: string | null; 
+    discordWebhookUrl?: string | null; 
   }
 ): Promise<string> {
   console.log('[saveForm] Received request to save form. UserID:', userId);
-  console.log('[saveForm] FormData received:', JSON.stringify(formData, null, 2));
+  if (!userId) {
+    console.error('[saveForm] Aborting: userId is missing or falsy.');
+    throw new Error('User ID is missing, cannot save form.');
+  }
+  if (!formData || typeof formData.title === 'undefined' || formData.title.trim() === "") {
+     console.error('[saveForm] Aborting: formData or formData.title is missing/empty.', JSON.stringify(formData, null, 2));
+     throw new Error('Form data or title is missing/empty, cannot save form.');
+  }
+  console.log('[saveForm] Valid FormData received:', JSON.stringify(formData, null, 2));
+  
   try {
     const dataToSave: Omit<FormSchemaForFirestore, 'id' | 'publishedLinkPath'> = {
       userId,
@@ -78,22 +87,26 @@ export async function saveForm(
         id: q.id || crypto.randomUUID(),
         options: q.options?.map(opt => ({ ...opt, id: opt.id || crypto.randomUUID() })) || [],
       })),
-      backgroundImageUrl: formData.backgroundImageUrl || null,
+      backgroundImageUrl: formData.backgroundImageUrl === undefined ? null : formData.backgroundImageUrl,
       notificationDestination: formData.notificationDestination || "none",
       receiverEmail: formData.notificationDestination === "email" ? (formData.receiverEmail || null) : null,
       discordWebhookUrl: formData.notificationDestination === "discord" ? (formData.discordWebhookUrl || null) : null,
       createdAt: serverTimestamp() as Timestamp,
     };
 
-    console.log('[saveForm] Data being written to Firestore:', JSON.stringify(dataToSave, null, 2));
+    console.log('[saveForm] Data being prepared for Firestore write:', JSON.stringify(dataToSave, null, 2));
     const docRef = await addDoc(collection(db, 'forms'), dataToSave);
-    console.log('[saveForm] Form saved successfully with ID: ', docRef.id);
+    console.log('[saveForm] Form saved successfully with Firestore ID: ', docRef.id);
     return docRef.id;
   } catch (error) {
     console.error('[saveForm] Error saving form to Firestore. Raw error object:', error);
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error while saving form.';
-    if (error instanceof Error && (error as any).code) {
-        console.error(`[saveForm] Firestore error code: ${(error as any).code}`);
+    let errorMessage = 'Unknown error while saving form.';
+    if (error instanceof Error) {
+        errorMessage = error.message;
+        if ((error as any).code) {
+            console.error(`[saveForm] Firestore error code: ${(error as any).code}, details: ${(error as any).details}`);
+            errorMessage += ` (Firestore code: ${(error as any).code})`;
+        }
     }
     throw new Error(`Failed to save form: ${errorMessage}`);
   }
@@ -123,8 +136,8 @@ export async function getForm(formId: string): Promise<FormSchemaForFirestore | 
         ...data,
         questions: questions, // Use processed questions
         notificationDestination: data.notificationDestination || "none",
-        receiverEmail: data.receiverEmail || null, // Use null instead of undefined for consistency
-        discordWebhookUrl: data.discordWebhookUrl || null, // Use null instead of undefined
+        receiverEmail: data.receiverEmail || null, 
+        discordWebhookUrl: data.discordWebhookUrl || null, 
       } as FormSchemaForFirestore;
     } else {
       console.log('No such document for formId:', formId);
@@ -251,7 +264,7 @@ export async function updateForm(
     } else if (formData.notificationDestination === "none") {
         updateData.receiverEmail = null;
         updateData.discordWebhookUrl = null;
-    } else { // If undefined, keep existing or set to null if no existing
+    } else { 
         updateData.receiverEmail = existingFormData.receiverEmail !== undefined ? existingFormData.receiverEmail : null;
         updateData.discordWebhookUrl = existingFormData.discordWebhookUrl !== undefined ? existingFormData.discordWebhookUrl : null;
     }
@@ -303,7 +316,6 @@ export async function getTotalSubmissionsForUser(userId: string): Promise<number
     return totalSubmissions;
   } catch (error) {
     console.error('Error getting total submissions for user:', userId, error);
-    // Return partial count if some succeed and others fail, or 0 if all fail.
     return totalSubmissions > 0 ? totalSubmissions : 0;
   }
 }
