@@ -37,7 +37,7 @@ export type QuestionOption = z.infer<typeof questionOptionSchema>;
 const questionSchema = z.object({
   id: z.string().optional(),
   text: z.string().min(1, "Question text is required"),
-  type: z.enum(["text", "email", "number", "textarea", "multiple-choice", "checkbox"], { // Added textarea
+  type: z.enum(["text", "email", "number", "textarea", "multiple-choice", "checkbox"], { 
     required_error: "Question type is required",
   }),
   options: z.array(questionOptionSchema).optional(),
@@ -76,7 +76,6 @@ const formBuilderSchema = z.object({
         path: ["discordWebhookUrl"],
       });
     }
-    // URL validation is already handled by z.string().url() for discordWebhookUrl
   }
 });
 
@@ -123,10 +122,10 @@ export default function CreateFormPage() {
   const handleBgImageSelect = (event: ChangeEvent<HTMLInputElement>) => {
     if (event.target.files && event.target.files[0]) {
       const file = event.target.files[0];
-      if (file.size > 4 * 1024 * 1024) { // 4MB limit
+      if (file.size > 4 * 1024 * 1024) { 
         setBgImageError("Image size should not exceed 4MB.");
         setBgImageFile(null);
-        if (event.target) event.target.value = ''; // Reset file input
+        if (event.target) event.target.value = ''; 
         return;
       }
       setBgImageFile(file);
@@ -147,7 +146,7 @@ export default function CreateFormPage() {
       toast({ title: "Background Image Uploaded!", description: "The image is ready to be saved with the form." });
       setBgImageFile(null);
       const fileInput = document.getElementById('bg-image-upload') as HTMLInputElement;
-      if (fileInput) fileInput.value = ''; // Reset file input
+      if (fileInput) fileInput.value = ''; 
     } catch (error) {
       const errMsg = error instanceof Error ? error.message : "Unknown error during upload.";
       setBgImageError(errMsg);
@@ -161,7 +160,7 @@ export default function CreateFormPage() {
     form.setValue("backgroundImageUrl", null, { shouldValidate: true });
     setBgImageFile(null);
     const fileInput = document.getElementById('bg-image-upload') as HTMLInputElement;
-    if (fileInput) fileInput.value = ''; // Reset file input
+    if (fileInput) fileInput.value = ''; 
     toast({ title: "Background Image Removed."});
   };
 
@@ -191,13 +190,19 @@ export default function CreateFormPage() {
       questions: data.questions.map(q => ({
         ...q,
         id: q.id || crypto.randomUUID(),
-        options: q.options?.map(opt => ({ ...opt, id: opt.id || crypto.randomUUID() }))
+        options: q.options?.map(opt => ({ ...opt, id: opt.id || crypto.randomUUID() })) || []
       })),
       backgroundImageUrl: data.backgroundImageUrl || null,
-      notificationDestination: data.notificationDestination,
-      receiverEmail: data.notificationDestination === "email" ? data.receiverEmail : null,
-      discordWebhookUrl: data.notificationDestination === "discord" ? data.discordWebhookUrl : null,
+      notificationDestination: data.notificationDestination || "none",
+      receiverEmail: null as string | null,
+      discordWebhookUrl: null as string | null,
     };
+
+    if (processedData.notificationDestination === "email") {
+      processedData.receiverEmail = data.receiverEmail || null;
+    } else if (processedData.notificationDestination === "discord") {
+      processedData.discordWebhookUrl = data.discordWebhookUrl || null;
+    }
     
     console.log("[CreateFormPage] Processed data being sent to saveForm:", JSON.stringify(processedData, null, 2));
 
@@ -588,5 +593,4 @@ function QuestionOptionsArray({ questionIndex, control }: { questionIndex: numbe
     </div>
   );
 }
-
     
