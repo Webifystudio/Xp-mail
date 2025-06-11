@@ -67,16 +67,12 @@ export async function saveForm(
     discordWebhookUrl?: string | null; 
   }
 ): Promise<string> {
-  console.log('[saveForm] Received request to save form. UserID:', userId);
   if (!userId) {
-    console.error('[saveForm] Aborting: userId is missing or falsy.');
     throw new Error('User ID is missing, cannot save form.');
   }
   if (!formData || typeof formData.title === 'undefined' || formData.title.trim() === "") {
-     console.error('[saveForm] Aborting: formData or formData.title is missing/empty.', JSON.stringify(formData, null, 2));
      throw new Error('Form data or title is missing/empty, cannot save form.');
   }
-  console.log('[saveForm] Valid FormData received:', JSON.stringify(formData, null, 2));
   
   try {
     const dataToSave: Omit<FormSchemaForFirestore, 'id' | 'publishedLinkPath'> = {
@@ -94,17 +90,15 @@ export async function saveForm(
       createdAt: serverTimestamp() as Timestamp,
     };
 
-    console.log('[saveForm] Data being prepared for Firestore write:', JSON.stringify(dataToSave, null, 2));
     const docRef = await addDoc(collection(db, 'forms'), dataToSave);
-    console.log('[saveForm] Form saved successfully with Firestore ID: ', docRef.id);
+    console.log('Form saved with ID: ', docRef.id);
     return docRef.id;
   } catch (error) {
-    console.error('[saveForm] Error saving form to Firestore. Raw error object:', error);
+    console.error('Error saving form to Firestore:', error);
     let errorMessage = 'Unknown error while saving form.';
     if (error instanceof Error) {
         errorMessage = error.message;
         if ((error as any).code) {
-            console.error(`[saveForm] Firestore error code: ${(error as any).code}, details: ${(error as any).details}`);
             errorMessage += ` (Firestore code: ${(error as any).code})`;
         }
     }

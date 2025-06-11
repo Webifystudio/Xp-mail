@@ -176,7 +176,7 @@ export default function CreateFormPage() {
     toast({ title: "Background Image Removed."});
   };
 
-  if (authLoading || !user && !authLoading) { // Ensure !user check is also within this condition if authLoading is false
+  if (authLoading || (!user && !authLoading)) { 
     return (
       <AppLayout>
         <div className="flex min-h-[calc(100vh-200px)] items-center justify-center">
@@ -187,21 +187,14 @@ export default function CreateFormPage() {
   }
 
   const onSubmit = async (data: FormBuilderValues) => {
-    console.log("[CreateFormPage] react-hook-form handleSubmit has invoked onSubmit function.");
-    console.log("[CreateFormPage] User object in onSubmit:", user);
-    console.log("[CreateFormPage] Auth loading state in onSubmit:", authLoading);
-
-
     if (!user || !user.uid) {
       toast({ title: "Authentication Error", description: "You must be logged in with a valid user ID to create a form. Please re-login if the issue persists.", variant: "destructive" });
-      console.error("[CreateFormPage] User not logged in, user.uid is missing, or auth is still loading during form submission attempt. User:", user, "AuthLoading:", authLoading);
       setIsSubmitting(false);
       return;
     }
 
     setIsSubmitting(true);
     setFormLink(null);
-    console.log("[CreateFormPage] Form data received by onSubmit from react-hook-form:", JSON.stringify(data, null, 2));
 
     const processedData: {
       title: string;
@@ -217,7 +210,7 @@ export default function CreateFormPage() {
         id: q.id || crypto.randomUUID(),
         options: q.options?.map(opt => ({ ...opt, id: opt.id || crypto.randomUUID() })) || []
       })),
-      backgroundImageUrl: data.backgroundImageUrl || null, // Ensure null if undefined/empty
+      backgroundImageUrl: data.backgroundImageUrl || null,
       notificationDestination: data.notificationDestination || "none",
       receiverEmail: null, 
       discordWebhookUrl: null, 
@@ -229,16 +222,10 @@ export default function CreateFormPage() {
       processedData.discordWebhookUrl = data.discordWebhookUrl || null;
     }
     
-    console.log("[CreateFormPage] Processed data being sent to saveForm:", JSON.stringify(processedData, null, 2));
-    console.log("[CreateFormPage] User ID being sent to saveForm:", user.uid);
-
     try {
-      console.log("[CreateFormPage] Attempting to call saveForm server action...");
       const formId = await saveForm(user.uid, processedData);
-      console.log("[CreateFormPage] saveForm server action call completed. Form ID from server:", formId);
       
       if (!formId) {
-        console.error("[CreateFormPage] saveForm returned a falsy formId:", formId);
         throw new Error("Server did not return a valid form ID.");
       }
 
@@ -257,12 +244,11 @@ export default function CreateFormPage() {
       if (fileInput) fileInput.value = '';
 
     } catch (error) {
-      console.error("[CreateFormPage] Error caught during saveForm call or subsequent client-side processing. Raw error object:", error);
+      console.error("Failed to save form:", error);
       const errorMessage = error instanceof Error ? error.message : "Could not save the form. Please check console for details.";
-      toast({ title: "Error Saving Form", description: errorMessage, variant: "destructive", duration: 9000 });
+      toast({ title: "Error Creating Form", description: errorMessage, variant: "destructive", duration: 9000 });
       setFormLink(null);
     } finally {
-      console.log("[CreateFormPage] onSubmit finally block. Setting isSubmitting to false.");
       setIsSubmitting(false);
     }
   };
@@ -575,7 +561,7 @@ export default function CreateFormPage() {
 
               <Button type="submit" className="w-full md:w-auto" disabled={isSubmitting || isUploadingBg || authLoading}>
                 {isSubmitting && <Spinner className="mr-2" size={16} />}
-                Save Form
+                Create Form
               </Button>
             </form>
           </Form>
