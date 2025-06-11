@@ -13,7 +13,7 @@ export async function sendFormSubmissionEmail({ to, formTitle, responseData }: E
   // IMPORTANT: THESE ARE HARDCODED CREDENTIALS FOR DEMONSTRATION.
   // REPLACE WITH ENVIRONMENT VARIABLES (process.env.EMAIL_USER, process.env.EMAIL_PASS) IN PRODUCTION.
   const emailUser = "xpnetwork.tech@gmail.com"; 
-  const emailPass = "luic ekcp dfbh nakd";   
+  const emailPass = "pcyg voia ikrt humw"; // UPDATED - MUST BE REPLACED WITH ENV VARS FOR PRODUCTION  
 
   if (!emailUser || !emailPass) {
     console.error('Email credentials (EMAIL_USER, EMAIL_PASS) are not configured. If you see this, the hardcoded values were removed without replacing them with environment variables.');
@@ -131,3 +131,4 @@ export async function sendFormSubmissionEmail({ to, formTitle, responseData }: E
     return { success: false, message: `Failed to send email: ${errorMessage}` };
   }
 }
+
