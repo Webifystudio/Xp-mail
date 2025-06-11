@@ -5,11 +5,12 @@ import { getFirestore } from 'firebase/firestore';
 const firebaseConfig = {
     apiKey: "AIzaSyBNyk5Qh-qpSCHBkKIsoOdzToQ8F9vKQ8A",
     authDomain: "xp-network-96e8f.firebaseapp.com",
+    databaseURL: "https://xp-network-96e8f-default-rtdb.asia-southeast1.firebasedatabase.app",
     projectId: "xp-network-96e8f",
-    storageBucket: "xp-network-96e8f.appspot.com",
+    storageBucket: "xp-network-96e8f.firebasestorage.app",
     messagingSenderId: "567445058390",
-    appId: "1:567445058390:web:57907617049c679e889cf7",
-    measurementId: "G-NZBQC708NM"
+    appId: "1:567445058390:web:56476f461ba4bf67889cf7",
+    measurementId: "G-D82XFPXLDM"
   };
 
 // Initialize Firebase
