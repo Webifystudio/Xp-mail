@@ -15,11 +15,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Checkbox } from "@/components/ui/checkbox";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { useForm, useFieldArray } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
-import { PlusCircle, Trash2, AlertCircle, UploadCloud, ImageIcon, Mail as MailIcon, MessageSquare, Webhook, XCircle } from "lucide-react";
+import { PlusCircle, Trash2, AlertCircle, UploadCloud, ImageIcon, Mail as MailIcon, XCircle } from "lucide-react";
 import { Spinner } from "@/components/ui/spinner";
 import { saveForm } from "@/services/formService";
 import { useToast } from "@/hooks/use-toast";
@@ -49,34 +48,7 @@ const formBuilderSchema = z.object({
   title: z.string().min(1, "Form title is required"),
   questions: z.array(questionSchema).min(1, "Add at least one question to the form."),
   backgroundImageUrl: z.string().url("Must be a valid URL").optional().nullable(),
-  notificationDestination: z.enum(["none", "email", "discord"]).default("none"),
-  receiverEmail: z.string().optional().nullable(),
-  discordWebhookUrl: z.string().url().optional().nullable(),
-}).superRefine((data, ctx) => {
-  if (data.notificationDestination === "email") {
-    if (!data.receiverEmail || data.receiverEmail.trim() === "") {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "Email address is required for email notifications.",
-        path: ["receiverEmail"],
-      });
-    } else if (!z.string().email().safeParse(data.receiverEmail).success) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "Invalid email address format.",
-        path: ["receiverEmail"],
-      });
-    }
-  }
-  if (data.notificationDestination === "discord") {
-     if (!data.discordWebhookUrl || data.discordWebhookUrl.trim() === "") {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "Discord webhook URL is required for Discord notifications.",
-        path: ["discordWebhookUrl"],
-      });
-    }
-  }
+  receiverEmail: z.string().email("Invalid email address format.").optional().nullable().or(z.literal('')), // Allow empty string, then treat as null
 });
 
 type FormBuilderValues = z.infer<typeof formBuilderSchema>;
@@ -98,9 +70,7 @@ export default function CreateFormPage() {
       title: "",
       questions: [{ text: "", type: "text", options: [], isRequired: false }],
       backgroundImageUrl: null,
-      notificationDestination: "none",
       receiverEmail: "",
-      discordWebhookUrl: "",
     },
   });
 
@@ -109,7 +79,6 @@ export default function CreateFormPage() {
     name: "questions",
   });
 
-  const watchedNotificationDestination = form.watch("notificationDestination");
   const currentBackgroundImageUrl = form.watch("backgroundImageUrl");
   const { setValue } = form;
 
@@ -119,25 +88,14 @@ export default function CreateFormPage() {
     }
   }, [user, authLoading, router]);
 
-  useEffect(() => {
-    if (watchedNotificationDestination === "email") {
-      setValue('discordWebhookUrl', '', { shouldValidate: false });
-    } else if (watchedNotificationDestination === "discord") {
-      setValue('receiverEmail', '', { shouldValidate: false });
-    } else {
-      setValue('receiverEmail', '', { shouldValidate: false });
-      setValue('discordWebhookUrl', '', { shouldValidate: false });
-    }
-  }, [watchedNotificationDestination, setValue]);
-
 
   const handleBgImageSelect = (event: ChangeEvent<HTMLInputElement>) => {
     if (event.target.files && event.target.files[0]) {
       const file = event.target.files[0];
-      if (file.size > 4 * 1024 * 1024) {
+      if (file.size > 4 * 1024 * 1024) { // 4MB limit
         setBgImageError("Image size should not exceed 4MB.");
         setBgImageFile(null);
-        if (event.target) event.target.value = '';
+        if (event.target) event.target.value = ''; // Reset file input
         return;
       }
       setBgImageFile(file);
@@ -156,9 +114,9 @@ export default function CreateFormPage() {
       const imageUrl = await uploadToImgBB(IMG_BB_API_KEY, bgImageFile);
       setValue("backgroundImageUrl", imageUrl, { shouldValidate: true });
       toast({ title: "Background Image Uploaded!", description: "The image is ready to be saved with the form." });
-      setBgImageFile(null);
+      setBgImageFile(null); // Clear the selected file
       const fileInput = document.getElementById('bg-image-upload') as HTMLInputElement;
-      if (fileInput) fileInput.value = '';
+      if (fileInput) fileInput.value = ''; // Reset file input
     } catch (error) {
       const errMsg = error instanceof Error ? error.message : "Unknown error during upload.";
       setBgImageError(errMsg);
@@ -167,14 +125,15 @@ export default function CreateFormPage() {
       setIsUploadingBg(false);
     }
   };
-
+  
   const removeBackgroundImage = () => {
     setValue("backgroundImageUrl", null, { shouldValidate: true });
     setBgImageFile(null);
     const fileInput = document.getElementById('bg-image-upload') as HTMLInputElement;
-    if (fileInput) fileInput.value = '';
+    if (fileInput) fileInput.value = ''; // Reset file input
     toast({ title: "Background Image Removed."});
   };
+
 
   if (authLoading || (!user && !authLoading)) { 
     return (
@@ -187,11 +146,11 @@ export default function CreateFormPage() {
   }
 
   const onSubmit = async (data: FormBuilderValues) => {
-    console.log("[CreateFormPage] onSubmit function entered. Data:", JSON.stringify(data, null, 2));
-    console.log("[CreateFormPage] User UID from useAuth:", user?.uid);
+    console.log("[CreateFormPage] onSubmit function entered. User:", user?.uid);
+    console.log("[CreateFormPage] Form data received by onSubmit:", JSON.stringify(data, null, 2));
 
     if (!user || !user.uid) {
-      toast({ title: "Authentication Error", description: "You must be logged in with a valid user ID to create a form. Please re-login if the issue persists.", variant: "destructive" });
+      toast({ title: "Authentication Error", description: "You must be logged in to create a form.", variant: "destructive" });
       setIsSubmitting(false);
       return;
     }
@@ -199,14 +158,7 @@ export default function CreateFormPage() {
     setIsSubmitting(true);
     setFormLink(null);
 
-    const processedData: {
-      title: string;
-      questions: Question[];
-      backgroundImageUrl: string | null;
-      notificationDestination: "none" | "email" | "discord";
-      receiverEmail: string | null;
-      discordWebhookUrl: string | null;
-    } = {
+    const processedData = {
       title: data.title,
       questions: data.questions.map(q => ({
         ...q,
@@ -214,23 +166,15 @@ export default function CreateFormPage() {
         options: q.options?.map(opt => ({ ...opt, id: opt.id || crypto.randomUUID() })) || []
       })),
       backgroundImageUrl: data.backgroundImageUrl || null,
-      notificationDestination: data.notificationDestination || "none",
-      receiverEmail: null, 
-      discordWebhookUrl: null, 
+      receiverEmail: data.receiverEmail && data.receiverEmail.trim() !== "" ? data.receiverEmail.trim() : null,
     };
-
-    if (processedData.notificationDestination === "email") {
-      processedData.receiverEmail = data.receiverEmail || null;
-    } else if (processedData.notificationDestination === "discord") {
-      processedData.discordWebhookUrl = data.discordWebhookUrl || null;
-    }
     
-    console.log("[CreateFormPage] Attempting to call saveForm with UID:", user.uid, "and processed data:", JSON.stringify(processedData, null, 2));
+    console.log("[CreateFormPage] Processed data being sent to saveForm:", JSON.stringify(processedData, null, 2));
+    
     try {
       const formId = await saveForm(user.uid, processedData);
       
       if (!formId) {
-        // This case should ideally be handled by saveForm throwing an error
         throw new Error("Server did not return a valid form ID.");
       }
       console.log("[CreateFormPage] Form saved successfully. Form ID:", formId);
@@ -240,9 +184,7 @@ export default function CreateFormPage() {
         title: "",
         questions: [{ text: "", type: "text", options: [], isRequired: false }],
         backgroundImageUrl: null,
-        notificationDestination: "none",
         receiverEmail: "",
-        discordWebhookUrl: ""
       });
       setBgImageFile(null);
       const fileInput = document.getElementById('bg-image-upload') as HTMLInputElement;
@@ -265,7 +207,7 @@ export default function CreateFormPage() {
       <Card className="shadow-xl">
         <CardHeader>
           <CardTitle className="text-3xl font-headline">Create New Form</CardTitle>
-          <CardDescription>Design your custom form. Add a title, questions, and configure notifications.</CardDescription>
+          <CardDescription>Design your custom form. Add a title, questions, and optionally an email for submission notifications.</CardDescription>
         </CardHeader>
         <CardContent>
           {formLink && (
@@ -295,93 +237,31 @@ export default function CreateFormPage() {
               <Card className="p-4 bg-muted/30">
                 <CardHeader className="p-0 pb-3">
                     <CardTitle className="text-lg font-semibold flex items-center">
-                        <MessageSquare className="mr-2 h-5 w-5 text-primary" /> Submission Notifications
+                        <MailIcon className="mr-2 h-5 w-5 text-primary" /> Email Notifications (Optional)
                     </CardTitle>
+                    <CardDescription>Enter an email address to receive notifications for new form submissions.</CardDescription>
                 </CardHeader>
                 <CardContent className="p-0 space-y-4">
                     <FormField
                         control={form.control}
-                        name="notificationDestination"
+                        name="receiverEmail"
                         render={({ field }) => (
-                            <FormItem className="space-y-2">
-                            <FormLabel>Send notifications to:</FormLabel>
+                        <FormItem>
+                            <FormLabel className="flex items-center">
+                             Notification Email Address
+                            </FormLabel>
                             <FormControl>
-                                <RadioGroup
-                                  onValueChange={field.onChange} 
-                                  value={field.value}
-                                  className="flex flex-col sm:flex-row sm:space-x-4 space-y-2 sm:space-y-0"
-                                >
-                                <FormItem className="flex items-center space-x-2 space-y-0">
-                                    <FormControl>
-                                    <RadioGroupItem value="none" id="notify-none"/>
-                                    </FormControl>
-                                    <FormLabel htmlFor="notify-none" className="font-normal">None</FormLabel>
-                                </FormItem>
-                                <FormItem className="flex items-center space-x-2 space-y-0">
-                                    <FormControl>
-                                    <RadioGroupItem value="email" id="notify-email"/>
-                                    </FormControl>
-                                    <FormLabel htmlFor="notify-email" className="font-normal flex items-center"><MailIcon className="mr-1 h-4 w-4"/>Email</FormLabel>
-                                </FormItem>
-                                <FormItem className="flex items-center space-x-2 space-y-0">
-                                    <FormControl>
-                                    <RadioGroupItem value="discord" id="notify-discord"/>
-                                    </FormControl>
-                                    <FormLabel htmlFor="notify-discord" className="font-normal flex items-center"><Webhook className="mr-1 h-4 w-4"/>Discord</FormLabel>
-                                </FormItem>
-                                </RadioGroup>
+                            <Input
+                                type="email"
+                                placeholder="e.g., your-team@example.com"
+                                {...field}
+                                value={field.value || ""}
+                            />
                             </FormControl>
                             <FormMessage />
-                            </FormItem>
+                        </FormItem>
                         )}
                     />
-
-                    {watchedNotificationDestination === "email" && (
-                        <FormField
-                            control={form.control}
-                            name="receiverEmail"
-                            render={({ field }) => (
-                            <FormItem>
-                                <FormLabel className="flex items-center">
-                                <MailIcon className="mr-2 h-4 w-4 text-muted-foreground" /> Notification Email Address
-                                </FormLabel>
-                                <FormControl>
-                                <Input
-                                    type="email"
-                                    placeholder="e.g., your-team@example.com"
-                                    {...field}
-                                    value={field.value || ""}
-                                />
-                                </FormControl>
-                                <FormMessage />
-                            </FormItem>
-                            )}
-                        />
-                    )}
-
-                    {watchedNotificationDestination === "discord" && (
-                        <FormField
-                            control={form.control}
-                            name="discordWebhookUrl"
-                            render={({ field }) => (
-                            <FormItem>
-                                <FormLabel className="flex items-center">
-                                <Webhook className="mr-2 h-4 w-4 text-muted-foreground" /> Discord Webhook URL
-                                </FormLabel>
-                                <FormControl>
-                                <Input
-                                    type="url"
-                                    placeholder="https://discord.com/api/webhooks/..."
-                                    {...field}
-                                    value={field.value || ""}
-                                />
-                                </FormControl>
-                                <FormDescription>Copy this from your Discord server's integration settings.</FormDescription>
-                                <FormMessage />
-                            </FormItem>
-                            )}
-                        />
-                    )}
                 </CardContent>
               </Card>
               
@@ -448,7 +328,7 @@ export default function CreateFormPage() {
                         control={form.control}
                         name="backgroundImageUrl"
                         render={({ field }) => (
-                          <FormItem className="hidden">
+                          <FormItem className="hidden"> {/* Hidden but necessary for react-hook-form to track its value */}
                             <FormControl>
                               <Input {...field} type="url" value={field.value || ""} />
                             </FormControl>
@@ -498,6 +378,7 @@ export default function CreateFormPage() {
                                 onValueChange={(value) => {
                                     field.onChange(value);
                                     if (value !== 'multiple-choice' && value !== 'checkbox') {
+                                        // Clear options for non-option types
                                         setValue(`questions.${index}.options`, []);
                                     }
                                 }}
@@ -550,6 +431,7 @@ export default function CreateFormPage() {
                   </Card>
                 ))}
                  {form.formState.errors.questions && typeof form.formState.errors.questions === 'object' && !Array.isArray(form.formState.errors.questions) && (
+                    // This handles the "Add at least one question" message for the array itself
                     <p className="text-sm font-medium text-destructive flex items-center">
                         <AlertCircle className="mr-1 h-4 w-4" />
                         {form.formState.errors.questions.message}
@@ -596,7 +478,7 @@ function QuestionOptionsArray({ questionIndex, control }: { questionIndex: numbe
                 <FormControl>
                   <Input placeholder={`Option ${optionIndex + 1}`} {...field} value={field.value || ""} />
                 </FormControl>
-                 <FormMessage />
+                 <FormMessage /> {/* Shows validation error for individual option */}
               </FormItem>
             )}
           />

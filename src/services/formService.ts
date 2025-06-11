@@ -22,31 +22,25 @@ import {
 } from 'firebase/firestore';
 import type { Question } from '@/app/forms/create/page';
 
-export type NotificationDestination = "none" | "email" | "discord";
-
-// Added 'updatedAt' as optional for Firestore updates
+// Simplified Form Schema for Firestore
 export interface FormSchemaForFirestore {
   id?: string;
   userId: string;
   title: string;
   questions: Question[];
   createdAt: Timestamp;
-  updatedAt?: Timestamp; // For tracking updates
-  publishedLinkPath?: string;
+  updatedAt?: Timestamp; 
   backgroundImageUrl?: string | null;
-  notificationDestination?: NotificationDestination;
-  receiverEmail?: string | null;
-  discordWebhookUrl?: string | null;
+  receiverEmail?: string | null; // Only email notifications are supported
 }
 
+// Simplified Form Schema with ID for client-side use
 export interface FormSchemaWithId extends Omit<FormSchemaForFirestore, 'createdAt' | 'questions' | 'updatedAt'> {
   id: string;
   questions: Question[];
-  createdAt: string; // Converted to ISO string for client
-  updatedAt?: string; // Converted to ISO string for client
-  notificationDestination: NotificationDestination;
+  createdAt: string; 
+  updatedAt?: string;
   receiverEmail?: string | null;
-  discordWebhookUrl?: string | null;
 }
 
 
@@ -62,13 +56,10 @@ export async function saveForm(
     title: string;
     questions: Question[];
     backgroundImageUrl?: string | null; 
-    notificationDestination?: NotificationDestination;
     receiverEmail?: string | null; 
-    discordWebhookUrl?: string | null; 
   }
 ): Promise<string> {
   console.log("[saveForm] Action entered. UserID:", userId);
-  // console.log("[saveForm] Received formData:", JSON.stringify(formData, null, 2)); // Can be very verbose
 
   if (!userId) {
     console.error("[saveForm] User ID is missing.");
@@ -80,7 +71,7 @@ export async function saveForm(
   }
   
   try {
-    const dataToSave: Omit<FormSchemaForFirestore, 'id' | 'publishedLinkPath'> = {
+    const dataToSave: Omit<FormSchemaForFirestore, 'id'> = {
       userId,
       title: formData.title,
       questions: formData.questions.map(q => ({
@@ -89,9 +80,7 @@ export async function saveForm(
         options: q.options?.map(opt => ({ ...opt, id: opt.id || crypto.randomUUID() })) || [],
       })),
       backgroundImageUrl: formData.backgroundImageUrl === undefined ? null : formData.backgroundImageUrl,
-      notificationDestination: formData.notificationDestination || "none",
-      receiverEmail: formData.notificationDestination === "email" ? (formData.receiverEmail || null) : null,
-      discordWebhookUrl: formData.notificationDestination === "discord" ? (formData.discordWebhookUrl || null) : null,
+      receiverEmail: formData.receiverEmail || null,
       createdAt: serverTimestamp() as Timestamp,
     };
     console.log("[saveForm] Data being written to Firestore:", JSON.stringify(dataToSave, null, 2));
@@ -104,11 +93,10 @@ export async function saveForm(
     let errorMessage = 'Unknown error while saving form to Firestore.';
     if (error instanceof Error) {
         errorMessage = error.message;
-        if ((error as any).code) { // For Firestore error codes
+        if ((error as any).code) { 
             errorMessage += ` (Firestore code: ${(error as any).code})`;
         }
     }
-    // Crucially, re-throw so the client's catch block is triggered
     throw new Error(`Failed to save form in service: ${errorMessage}`);
   }
 }
@@ -120,7 +108,6 @@ export async function getForm(formId: string): Promise<FormSchemaForFirestore | 
 
     if (formDocSnap.exists()) {
       const data = formDocSnap.data();
-      // Ensure questions and options have IDs if they are missing (older data migration)
       const questions = (data.questions || []).map((q: any) => ({
         id: q.id || crypto.randomUUID(),
         text: q.text || '',
@@ -135,10 +122,8 @@ export async function getForm(formId: string): Promise<FormSchemaForFirestore | 
       return {
         id: formDocSnap.id,
         ...data,
-        questions: questions, // Use processed questions
-        notificationDestination: data.notificationDestination || "none",
+        questions: questions,
         receiverEmail: data.receiverEmail || null, 
-        discordWebhookUrl: data.discordWebhookUrl || null, 
       } as FormSchemaForFirestore;
     } else {
       console.log('No such document for formId:', formId);
@@ -173,9 +158,7 @@ export async function getFormsByUser(userId: string): Promise<FormSchemaWithId[]
         })),
         createdAt: data.createdAt instanceof Timestamp ? data.createdAt.toDate().toISOString() : String(data.createdAt),
         updatedAt: data.updatedAt instanceof Timestamp ? data.updatedAt.toDate().toISOString() : (data.updatedAt ? String(data.updatedAt) : undefined),
-        notificationDestination: data.notificationDestination || "none",
         receiverEmail: data.receiverEmail || null,
-        discordWebhookUrl: data.discordWebhookUrl || null,
       });
     });
     return forms;
@@ -183,7 +166,7 @@ export async function getFormsByUser(userId: string): Promise<FormSchemaWithId[]
     console.error('Error fetching forms by user (UID:', userId, '):', error);
     const originalError = error instanceof Error ? error.message : String(error);
     if (originalError.includes('indexes?create_composite=') || originalError.toLowerCase().includes('index')) {
-        console.error("Firestore indexing issue suspected. Please check the Firebase console for index creation prompts related to the 'forms' collection, filtering by 'userId' and ordering by 'createdAt'. The original error from Firestore is: ", (error as any)?.cause || error);
+        console.error("Firestore indexing issue suspected. The original error from Firestore is: ", (error as any)?.cause || error);
          throw new Error(`Failed to fetch forms. Original error: ${originalError} This often indicates a missing Firestore index. Please check your server console logs (where 'npm run dev' is running) for a detailed error message from Firestore, which may include a link to create the required index.`);
     }
     throw new Error(`Failed to fetch forms. Original error: ${originalError}`);
@@ -222,13 +205,10 @@ export async function updateForm(
         title: string;
         questions: Question[];
         backgroundImageUrl?: string | null;
-        notificationDestination?: NotificationDestination;
         receiverEmail?: string | null;
-        discordWebhookUrl?: string | null;
     }
 ): Promise<void> {
   console.log('[updateForm] Received request to update form. FormID:', formId, 'UserID:', userId);
-  // console.log('[updateForm] FormData received:', JSON.stringify(formData, null, 2));
   try {
     const formDocRef = doc(db, 'forms', formId);
     const formDocSnap = await getDoc(formDocRef);
@@ -252,23 +232,9 @@ export async function updateForm(
             options: q.options?.map(opt => ({ ...opt, id: opt.id || crypto.randomUUID() })) || []
         })),
         backgroundImageUrl: formData.backgroundImageUrl === undefined ? existingFormData.backgroundImageUrl : formData.backgroundImageUrl,
-        notificationDestination: formData.notificationDestination || existingFormData.notificationDestination || "none",
+        receiverEmail: formData.receiverEmail === undefined ? existingFormData.receiverEmail : (formData.receiverEmail || null),
         updatedAt: serverTimestamp() as Timestamp
     };
-
-    if (formData.notificationDestination === "email") {
-        updateData.receiverEmail = formData.receiverEmail || null;
-        updateData.discordWebhookUrl = null;
-    } else if (formData.notificationDestination === "discord") {
-        updateData.discordWebhookUrl = formData.discordWebhookUrl || null;
-        updateData.receiverEmail = null;
-    } else if (formData.notificationDestination === "none") {
-        updateData.receiverEmail = null;
-        updateData.discordWebhookUrl = null;
-    } else { 
-        updateData.receiverEmail = existingFormData.receiverEmail !== undefined ? existingFormData.receiverEmail : null;
-        updateData.discordWebhookUrl = existingFormData.discordWebhookUrl !== undefined ? existingFormData.discordWebhookUrl : null;
-    }
 
     console.log('[updateForm] Data being written to Firestore for update:', JSON.stringify(updateData, null, 2));
     await updateDoc(formDocRef, updateData);

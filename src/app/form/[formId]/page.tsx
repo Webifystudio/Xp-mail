@@ -6,7 +6,6 @@ import { useParams } from 'next/navigation';
 import { getForm, FormSchemaForFirestore, saveFormResponse } from '@/services/formService';
 import type { Question } from '@/app/forms/create/page'; 
 import type { Timestamp } from 'firebase/firestore';
-import type { NotificationDestination } from '@/services/formService';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
@@ -18,7 +17,7 @@ import { Spinner } from '@/components/ui/spinner';
 import { AlertTriangle, CheckCircle2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { sendFormSubmissionEmail } from '@/actions/sendFormEmail';
-import { sendDiscordNotification } from '@/actions/sendDiscordNotification';
+// sendDiscordNotification is no longer used here
 
 interface PublicFormDisplayData extends Omit<FormSchemaForFirestore, 'createdAt' | 'questions' | 'title'> {
   id: string; 
@@ -26,20 +25,18 @@ interface PublicFormDisplayData extends Omit<FormSchemaForFirestore, 'createdAt'
   questions: Question[]; 
   createdAt: Timestamp | string; 
   backgroundImageUrl?: string | null;
-  notificationDestination?: NotificationDestination;
   receiverEmail?: string | null;
-  discordWebhookUrl?: string | null;
 }
 
 function PublicFormLayout({ children, backgroundImageUrl }: { children: React.ReactNode; backgroundImageUrl?: string | null; }) {
   const layoutStyle: React.CSSProperties = {
-    position: 'relative', // Needed for the overlay
+    position: 'relative',
     minHeight: '100vh',
     display: 'flex',
     flexDirection: 'column',
     alignItems: 'center',
     justifyContent: 'center',
-    padding: '1rem', // p-4
+    padding: '1rem', 
     backgroundRepeat: 'no-repeat',
   };
 
@@ -47,21 +44,20 @@ function PublicFormLayout({ children, backgroundImageUrl }: { children: React.Re
     layoutStyle.backgroundImage = `url(${backgroundImageUrl})`;
     layoutStyle.backgroundSize = 'cover';
     layoutStyle.backgroundPosition = 'center';
-    layoutStyle.backgroundAttachment = 'fixed'; // Keep background fixed during scroll
+    layoutStyle.backgroundAttachment = 'fixed'; 
   } else {
-    layoutStyle.backgroundColor = 'hsl(var(--muted))'; // Fallback bg
+    layoutStyle.backgroundColor = 'hsl(var(--muted))'; 
   }
 
   return (
     <div style={layoutStyle}>
-      {/* Overlay for readability when background image is present */}
       {backgroundImageUrl && (
         <div 
           className="absolute inset-0 bg-black/40 dark:bg-black/60 backdrop-blur-sm z-0"
           aria-hidden="true"
         ></div>
       )}
-      <div className="w-full max-w-2xl relative z-10"> {/* Content on top of overlay */}
+      <div className="w-full max-w-2xl relative z-10">
         {children}
       </div>
       <footer className="py-6 mt-8 text-center text-sm relative z-10">
@@ -109,9 +105,7 @@ export default function PublicFormPage() {
               questions: typedQuestions, 
               createdAt: data.createdAt, 
               backgroundImageUrl: data.backgroundImageUrl || null, 
-              notificationDestination: data.notificationDestination || "none",
               receiverEmail: data.receiverEmail || null,
-              discordWebhookUrl: data.discordWebhookUrl || null,
             };
             setForm(processedForm);
           } else {
@@ -150,7 +144,6 @@ export default function PublicFormPage() {
     setIsSubmitting(true);
     setSubmissionMessage(null);
     
-    // Validate required fields
     for (const question of form.questions) {
       if (question.isRequired) {
         const response = formResponses[question.id || question.text];
@@ -172,13 +165,11 @@ export default function PublicFormPage() {
       setSubmissionMessage('Thank you! Your form has been submitted successfully.');
       
       console.log('Form notification config:', {
-        destination: form.notificationDestination,
         email: form.receiverEmail,
-        webhook: form.discordWebhookUrl,
         title: form.title
       });
 
-      if (form.notificationDestination === "email" && form.receiverEmail && form.title) {
+      if (form.receiverEmail && form.title) {
         console.log(`Attempting to send email to: ${form.receiverEmail} for form: ${form.title}`);
         const emailResult = await sendFormSubmissionEmail({
           to: form.receiverEmail,
@@ -194,27 +185,9 @@ export default function PublicFormPage() {
             duration: 8000,
           });
         }
-      } else if (form.notificationDestination === "discord" && form.discordWebhookUrl && form.title) {
-        console.log(`Attempting to send Discord notification for form: ${form.title}`);
-        const discordResult = await sendDiscordNotification(
-            form.discordWebhookUrl,
-            form.title,
-            formResponses
-        );
-        console.log('Discord notification send result:', discordResult);
-        if (!discordResult.success) {
-           toast({
-            title: "Notification Issue (Discord)",
-            description: `Form submitted, but Discord notification failed: ${discordResult.message || 'Unknown error.'}. Please check server logs.`,
-            variant: "default", 
-            duration: 8000,
-          });
-        }
       } else {
-        console.log('No valid notification configured or title missing for this form. Skipping notification.', {
-            destination: form.notificationDestination, 
+        console.log('No valid email notification configured or title missing for this form. Skipping notification.', {
             receiverEmail: form.receiverEmail, 
-            discordWebhookUrl: form.discordWebhookUrl,
             title: form.title 
         });
       }
@@ -402,3 +375,4 @@ export default function PublicFormPage() {
   );
 }
 
+    
