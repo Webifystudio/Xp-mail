@@ -37,7 +37,7 @@ export type QuestionOption = z.infer<typeof questionOptionSchema>;
 const questionSchema = z.object({
   id: z.string().optional(),
   text: z.string().min(1, "Question text is required"),
-  type: z.enum(["text", "email", "number", "multiple-choice", "checkbox"], {
+  type: z.enum(["text", "email", "number", "textarea", "multiple-choice", "checkbox"], { // Added textarea
     required_error: "Question type is required",
   }),
   options: z.array(questionOptionSchema).optional(),
@@ -145,7 +145,7 @@ export default function CreateFormPage() {
       const imageUrl = await uploadToImgBB(IMG_BB_API_KEY, bgImageFile);
       form.setValue("backgroundImageUrl", imageUrl, { shouldValidate: true });
       toast({ title: "Background Image Uploaded!", description: "The image is ready to be saved with the form." });
-      setBgImageFile(null); 
+      setBgImageFile(null);
       const fileInput = document.getElementById('bg-image-upload') as HTMLInputElement;
       if (fileInput) fileInput.value = ''; // Reset file input
     } catch (error) {
@@ -176,14 +176,17 @@ export default function CreateFormPage() {
   }
 
   const onSubmit = async (data: FormBuilderValues) => {
+    console.log("[CreateFormPage] onSubmit triggered. User:", user?.uid);
     if (!user) {
       toast({ title: "Error", description: "You must be logged in to create a form.", variant: "destructive" });
+      console.error("[CreateFormPage] User not logged in during form submission attempt.");
       return;
     }
     setIsSubmitting(true);
     setFormLink(null);
+    console.log("[CreateFormPage] Form data received by onSubmit:", JSON.stringify(data, null, 2));
 
-    const processedData: any = {
+    const processedData = {
       title: data.title,
       questions: data.questions.map(q => ({
         ...q,
@@ -196,23 +199,28 @@ export default function CreateFormPage() {
       discordWebhookUrl: data.notificationDestination === "discord" ? data.discordWebhookUrl : null,
     };
     
+    console.log("[CreateFormPage] Processed data being sent to saveForm:", JSON.stringify(processedData, null, 2));
+
     try {
       const formId = await saveForm(user.uid, processedData);
+      console.log("[CreateFormPage] Form saved successfully. Form ID:", formId);
       setFormLink(`/form/${formId}`);
       toast({ title: "Form Created!", description: "Your form has been saved successfully." });
-      form.reset({ 
-        title: "", 
+      form.reset({
+        title: "",
         questions: [{ text: "", type: "text", options: [], isRequired: false }],
         backgroundImageUrl: null,
         notificationDestination: "none",
         receiverEmail: "",
         discordWebhookUrl: ""
       });
+      setBgImageFile(null);
       const fileInput = document.getElementById('bg-image-upload') as HTMLInputElement;
-      if (fileInput) fileInput.value = ''; // Reset file input on successful form save too
+      if (fileInput) fileInput.value = '';
     } catch (error) {
-      console.error("Failed to save form:", error);
-      toast({ title: "Error", description: (error as Error).message || "Could not save the form. Please try again.", variant: "destructive" });
+      console.error("[CreateFormPage] Failed to save form. Raw error object:", error);
+      const errorMessage = error instanceof Error ? error.message : "Could not save the form. Please try again.";
+      toast({ title: "Error Saving Form", description: errorMessage, variant: "destructive", duration: 7000 });
     } finally {
       setIsSubmitting(false);
     }
@@ -268,7 +276,6 @@ export default function CreateFormPage() {
                                 <RadioGroup
                                 onValueChange={(value) => {
                                     field.onChange(value);
-                                    // Clear other fields and errors when selection changes
                                     if (value !== 'email') form.setValue('receiverEmail', '', { shouldValidate: true });
                                     if (value !== 'discord') form.setValue('discordWebhookUrl', '', { shouldValidate: true });
                                 }}
@@ -310,11 +317,11 @@ export default function CreateFormPage() {
                                 <MailIcon className="mr-2 h-4 w-4 text-muted-foreground" /> Notification Email Address
                                 </FormLabel>
                                 <FormControl>
-                                <Input 
-                                    type="email" 
-                                    placeholder="e.g., your-team@example.com" 
-                                    {...field} 
-                                    value={field.value || ""} 
+                                <Input
+                                    type="email"
+                                    placeholder="e.g., your-team@example.com"
+                                    {...field}
+                                    value={field.value || ""}
                                 />
                                 </FormControl>
                                 <FormMessage />
@@ -333,11 +340,11 @@ export default function CreateFormPage() {
                                 <Webhook className="mr-2 h-4 w-4 text-muted-foreground" /> Discord Webhook URL
                                 </FormLabel>
                                 <FormControl>
-                                <Input 
-                                    type="url" 
-                                    placeholder="https://discord.com/api/webhooks/..." 
-                                    {...field} 
-                                    value={field.value || ""} 
+                                <Input
+                                    type="url"
+                                    placeholder="https://discord.com/api/webhooks/..."
+                                    {...field}
+                                    value={field.value || ""}
                                 />
                                 </FormControl>
                                 <FormDescription>Copy this from your Discord server's integration settings.</FormDescription>
@@ -359,11 +366,11 @@ export default function CreateFormPage() {
                 <CardContent className="p-0 space-y-3">
                     <div className="space-y-1">
                         <Label htmlFor="bg-image-upload">Upload Image</Label>
-                        <Input 
-                            id="bg-image-upload" 
-                            type="file" 
-                            accept="image/jpeg,image/png,image/gif,image/webp" 
-                            onChange={handleBgImageSelect} 
+                        <Input
+                            id="bg-image-upload"
+                            type="file"
+                            accept="image/jpeg,image/png,image/gif,image/webp"
+                            onChange={handleBgImageSelect}
                             className="text-sm file:mr-2 file:py-1 file:px-2 file:rounded-full file:border-0 file:text-xs file:bg-muted file:text-muted-foreground hover:file:bg-primary/10"
                         />
                         {bgImageFile && <p className="text-xs text-muted-foreground">Selected: {bgImageFile.name}</p>}
@@ -373,9 +380,9 @@ export default function CreateFormPage() {
                             <AlertCircle className="mr-1 h-4 w-4" /> {bgImageError}
                         </p>
                     )}
-                    <Button 
-                        type="button" 
-                        onClick={handleBgImageUpload} 
+                    <Button
+                        type="button"
+                        onClick={handleBgImageUpload}
                         disabled={!bgImageFile || isUploadingBg}
                         variant="outline"
                         size="sm"
@@ -387,19 +394,19 @@ export default function CreateFormPage() {
                         <div className="mt-3 pt-3 border-t">
                             <Label className="text-sm font-medium block mb-1">Current Background:</Label>
                             <div className="w-full aspect-video rounded border overflow-hidden relative bg-slate-200 dark:bg-slate-700">
-                                <Image 
-                                  src={currentBackgroundImageUrl} 
-                                  alt="Background preview" 
-                                  layout="fill" 
-                                  objectFit="cover" 
+                                <Image
+                                  src={currentBackgroundImageUrl}
+                                  alt="Background preview"
+                                  fill
+                                  style={{objectFit: 'cover'}}
                                   className="rounded"
-                                  unoptimized={currentBackgroundImageUrl.startsWith('https://i.ibb.co')} // Avoid Next.js optimization for external ImgBB URLs if issues arise
+                                  unoptimized={currentBackgroundImageUrl.startsWith('https://i.ibb.co')}
                                 />
                             </div>
-                             <Button 
-                                type="button" 
-                                variant="link" 
-                                size="sm" 
+                             <Button
+                                type="button"
+                                variant="link"
+                                size="sm"
                                 className="text-xs text-destructive p-0 h-auto mt-1 flex items-center"
                                 onClick={removeBackgroundImage}
                               >
@@ -457,13 +464,13 @@ export default function CreateFormPage() {
                         render={({ field }) => (
                           <FormItem>
                             <FormLabel>Question Type</FormLabel>
-                            <Select 
+                            <Select
                                 onValueChange={(value) => {
                                     field.onChange(value);
                                     if (value !== 'multiple-choice' && value !== 'checkbox') {
                                         form.setValue(`questions.${index}.options`, []);
                                     }
-                                }} 
+                                }}
                                 defaultValue={field.value}
                             >
                               <FormControl>
@@ -582,3 +589,4 @@ function QuestionOptionsArray({ questionIndex, control }: { questionIndex: numbe
   );
 }
 
+    
