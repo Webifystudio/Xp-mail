@@ -37,7 +37,7 @@ export type QuestionOption = z.infer<typeof questionOptionSchema>;
 const questionSchema = z.object({
   id: z.string().optional(),
   text: z.string().min(1, "Question text is required"),
-  type: z.enum(["text", "email", "number", "textarea", "multiple-choice", "checkbox"], { 
+  type: z.enum(["text", "email", "number", "textarea", "multiple-choice", "checkbox"], {
     required_error: "Question type is required",
   }),
   options: z.array(questionOptionSchema).optional(),
@@ -111,6 +111,7 @@ export default function CreateFormPage() {
 
   const watchedNotificationDestination = form.watch("notificationDestination");
   const currentBackgroundImageUrl = form.watch("backgroundImageUrl");
+  const { setValue } = form; // Destructure setValue for stable reference
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -119,26 +120,24 @@ export default function CreateFormPage() {
   }, [user, authLoading, router]);
 
   useEffect(() => {
-    // When notificationDestination changes, clear the irrelevant field.
-    // Validation will be handled by Zod schema on submit or blur.
     if (watchedNotificationDestination === "email") {
-      form.setValue('discordWebhookUrl', '', { shouldValidate: false });
+      setValue('discordWebhookUrl', '', { shouldValidate: false });
     } else if (watchedNotificationDestination === "discord") {
-      form.setValue('receiverEmail', '', { shouldValidate: false });
-    } else { // "none" or other cases
-      form.setValue('receiverEmail', '', { shouldValidate: false });
-      form.setValue('discordWebhookUrl', '', { shouldValidate: false });
+      setValue('receiverEmail', '', { shouldValidate: false });
+    } else {
+      setValue('receiverEmail', '', { shouldValidate: false });
+      setValue('discordWebhookUrl', '', { shouldValidate: false });
     }
-  }, [watchedNotificationDestination, form]);
+  }, [watchedNotificationDestination, setValue]);
 
 
   const handleBgImageSelect = (event: ChangeEvent<HTMLInputElement>) => {
     if (event.target.files && event.target.files[0]) {
       const file = event.target.files[0];
-      if (file.size > 4 * 1024 * 1024) { 
+      if (file.size > 4 * 1024 * 1024) {
         setBgImageError("Image size should not exceed 4MB.");
         setBgImageFile(null);
-        if (event.target) event.target.value = ''; 
+        if (event.target) event.target.value = '';
         return;
       }
       setBgImageFile(file);
@@ -155,11 +154,11 @@ export default function CreateFormPage() {
     setBgImageError(null);
     try {
       const imageUrl = await uploadToImgBB(IMG_BB_API_KEY, bgImageFile);
-      form.setValue("backgroundImageUrl", imageUrl, { shouldValidate: true });
+      setValue("backgroundImageUrl", imageUrl, { shouldValidate: true });
       toast({ title: "Background Image Uploaded!", description: "The image is ready to be saved with the form." });
       setBgImageFile(null);
       const fileInput = document.getElementById('bg-image-upload') as HTMLInputElement;
-      if (fileInput) fileInput.value = ''; 
+      if (fileInput) fileInput.value = '';
     } catch (error) {
       const errMsg = error instanceof Error ? error.message : "Unknown error during upload.";
       setBgImageError(errMsg);
@@ -170,10 +169,10 @@ export default function CreateFormPage() {
   };
 
   const removeBackgroundImage = () => {
-    form.setValue("backgroundImageUrl", null, { shouldValidate: true });
+    setValue("backgroundImageUrl", null, { shouldValidate: true });
     setBgImageFile(null);
     const fileInput = document.getElementById('bg-image-upload') as HTMLInputElement;
-    if (fileInput) fileInput.value = ''; 
+    if (fileInput) fileInput.value = '';
     toast({ title: "Background Image Removed."});
   };
 
@@ -214,8 +213,8 @@ export default function CreateFormPage() {
       })),
       backgroundImageUrl: data.backgroundImageUrl || null,
       notificationDestination: data.notificationDestination || "none",
-      receiverEmail: null, // Initialize to null
-      discordWebhookUrl: null, // Initialize to null
+      receiverEmail: null, 
+      discordWebhookUrl: null, 
     };
 
     if (processedData.notificationDestination === "email") {
@@ -299,7 +298,7 @@ export default function CreateFormPage() {
                             <FormLabel>Send notifications to:</FormLabel>
                             <FormControl>
                                 <RadioGroup
-                                  onValueChange={field.onChange} // useEffect will handle dependent field updates
+                                  onValueChange={field.onChange} 
                                   value={field.value}
                                   className="flex flex-col sm:flex-row sm:space-x-4 space-y-2 sm:space-y-0"
                                 >
@@ -422,6 +421,7 @@ export default function CreateFormPage() {
                                   style={{objectFit: 'cover'}}
                                   className="rounded"
                                   unoptimized={currentBackgroundImageUrl.startsWith('https://i.ibb.co')}
+                                  data-ai-hint="abstract background"
                                 />
                             </div>
                              <Button
@@ -489,7 +489,7 @@ export default function CreateFormPage() {
                                 onValueChange={(value) => {
                                     field.onChange(value);
                                     if (value !== 'multiple-choice' && value !== 'checkbox') {
-                                        form.setValue(`questions.${index}.options`, []);
+                                        setValue(`questions.${index}.options`, []);
                                     }
                                 }}
                                 defaultValue={field.value}
@@ -609,5 +609,3 @@ function QuestionOptionsArray({ questionIndex, control }: { questionIndex: numbe
     </div>
   );
 }
-    
-
