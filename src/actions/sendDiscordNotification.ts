@@ -1,6 +1,8 @@
 
 'use server';
 
+import type { Question } from '@/app/forms/create/page'; // Import Question type
+
 interface DiscordEmbedField {
   name: string;
   value: string;
@@ -29,42 +31,55 @@ interface DiscordWebhookPayload {
 export async function sendDiscordNotification(
   webhookUrl: string,
   formTitle: string,
-  responseData: Record<string, any>
+  responseData: Record<string, any>,
+  questions: Question[] // Add questions array
 ): Promise<{ success: boolean; message: string }> {
   if (!webhookUrl) {
     return { success: false, message: 'Discord webhook URL is not configured.' };
   }
 
+  // Create a map for easy lookup of question text by ID
+  const questionTextMap = new Map<string, string>();
+  questions.forEach(q => {
+    if (q.id) { // q.id should always be present
+      questionTextMap.set(q.id, q.text);
+    } else {
+      // Fallback for older data or if ID is somehow missing
+      questionTextMap.set(q.text, q.text);
+    }
+  });
+  
   const fields: DiscordEmbedField[] = [];
-  for (const [question, answer] of Object.entries(responseData)) {
+  for (const [questionId, answer] of Object.entries(responseData)) {
+    const questionActualText = questionTextMap.get(questionId) || questionId; // Use ID as fallback
+
     fields.push({
-      name: question.substring(0, 256), // Max field name length is 256
+      name: String(questionActualText).substring(0, 256), // Max field name length is 256
       value: (Array.isArray(answer) ? answer.join(', ') : String(answer)).substring(0, 1024), // Max field value length is 1024
       inline: false, // Display each Q&A on its own line for clarity
     });
   }
   
-  // Split fields into multiple embeds if there are too many (Discord limit is 25 fields per embed)
   const embeds: DiscordEmbed[] = [];
-  const maxFieldsPerEmbed = 20; // Keep it under 25 to be safe with title/description/footer
+  const maxFieldsPerEmbed = 20; 
   for (let i = 0; i < fields.length; i += maxFieldsPerEmbed) {
     const chunk = fields.slice(i, i + maxFieldsPerEmbed);
     const embed: DiscordEmbed = {
       title: i === 0 ? `New Submission: ${formTitle.substring(0, 250)}` : `(continued) ${formTitle.substring(0,240)}`,
-      color: 0x5865F2, // Discord blurple
+      color: 0x5865F2, 
       fields: chunk,
       timestamp: new Date().toISOString(),
     };
     if (i === 0) {
          embed.description = `A new response has been submitted to your form.`;
     }
-    if (i + maxFieldsPerEmbed >= fields.length) { // Add footer to the last embed
+    if (i + maxFieldsPerEmbed >= fields.length) { 
         embed.footer = { text: 'Powered by XPMail & Forms' };
     }
     embeds.push(embed);
   }
   
-  if (embeds.length === 0) { // Case where responseData is empty
+  if (embeds.length === 0) { 
      embeds.push({
         title: `New Submission: ${formTitle.substring(0, 250)}`,
         description: "A new response (with no questions/answers) has been submitted.",
@@ -74,12 +89,9 @@ export async function sendDiscordNotification(
      });
   }
 
-
   const payload: DiscordWebhookPayload = {
     username: 'XPMail & Forms Notifier',
-    // You can set a default avatar URL if you have one hosted
-    // avatar_url: "https://your-app.com/avatar.png", 
-    embeds: embeds.slice(0, 10), // Discord allows max 10 embeds per message
+    embeds: embeds.slice(0, 10), 
   };
 
   try {

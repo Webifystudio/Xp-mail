@@ -2,14 +2,16 @@
 'use server';
 
 import nodemailer from 'nodemailer';
+import type { Question } from '@/app/forms/create/page'; // Import Question type
 
 interface EmailPayload {
   to: string;
   formTitle: string;
   responseData: Record<string, any>;
+  questions: Question[]; // Add questions array
 }
 
-export async function sendFormSubmissionEmail({ to, formTitle, responseData }: EmailPayload): Promise<{ success: boolean; message: string }> {
+export async function sendFormSubmissionEmail({ to, formTitle, responseData, questions }: EmailPayload): Promise<{ success: boolean; message: string }> {
   const emailUser = "xpnetwork.tech@gmail.com"; 
   const emailPass = "pcyg voia ikrt humw"; 
 
@@ -26,11 +28,25 @@ export async function sendFormSubmissionEmail({ to, formTitle, responseData }: E
     },
   });
 
+  // Create a map for easy lookup of question text by ID
+  const questionTextMap = new Map<string, string>();
+  questions.forEach(q => {
+    if (q.id) { // q.id should always be present
+      questionTextMap.set(q.id, q.text);
+    } else {
+      // Fallback for older data or if ID is somehow missing
+      // This case should ideally not happen with current form saving logic
+      questionTextMap.set(q.text, q.text); 
+    }
+  });
+
   let questionsAndAnswersHtml = '';
   if (Object.keys(responseData).length > 0) {
-    for (const [question, answer] of Object.entries(responseData)) {
+    for (const [questionId, answer] of Object.entries(responseData)) {
+      const questionActualText = questionTextMap.get(questionId) || questionId; // Use ID as fallback
+      
       // Sanitize to prevent HTML injection FROM THE CONTENT, not to break the table structure
-      const sanitizedQuestion = String(question).replace(/</g, "&lt;").replace(/>/g, "&gt;");
+      const sanitizedQuestion = String(questionActualText).replace(/</g, "&lt;").replace(/>/g, "&gt;");
       const sanitizedAnswer = Array.isArray(answer) 
         ? answer.map(a => String(a).replace(/</g, "&lt;").replace(/>/g, "&gt;")).join(', ') 
         : String(answer).replace(/</g, "&lt;").replace(/>/g, "&gt;");

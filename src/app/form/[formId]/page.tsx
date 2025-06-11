@@ -17,7 +17,7 @@ import { Spinner } from '@/components/ui/spinner';
 import { AlertTriangle, CheckCircle2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { sendFormSubmissionEmail } from '@/actions/sendFormEmail';
-// sendDiscordNotification is no longer used here
+import { sendDiscordNotification } from '@/actions/sendDiscordNotification';
 
 interface PublicFormDisplayData extends Omit<FormSchemaForFirestore, 'createdAt' | 'questions' | 'title'> {
   id: string; 
@@ -26,6 +26,8 @@ interface PublicFormDisplayData extends Omit<FormSchemaForFirestore, 'createdAt'
   createdAt: Timestamp | string; 
   backgroundImageUrl?: string | null;
   receiverEmail?: string | null;
+  discordWebhookUrl?: string | null;
+  notificationDestination?: 'email' | 'discord' | null;
 }
 
 function PublicFormLayout({ children, backgroundImageUrl }: { children: React.ReactNode; backgroundImageUrl?: string | null; }) {
@@ -106,6 +108,10 @@ export default function PublicFormPage() {
               createdAt: data.createdAt, 
               backgroundImageUrl: data.backgroundImageUrl || null, 
               receiverEmail: data.receiverEmail || null,
+              // Only expecting receiverEmail from the simplified version,
+              // but including others for robustness if old data exists
+              discordWebhookUrl: (data as any).discordWebhookUrl || null, 
+              notificationDestination: (data as any).notificationDestination || (data.receiverEmail ? 'email' : null),
             };
             setForm(processedForm);
           } else {
@@ -165,16 +171,20 @@ export default function PublicFormPage() {
       setSubmissionMessage('Thank you! Your form has been submitted successfully.');
       
       console.log('Form notification config:', {
+        destination: form.notificationDestination,
         email: form.receiverEmail,
+        webhook: form.discordWebhookUrl,
         title: form.title
       });
-
+      
+      // Simplified notification logic: only email if receiverEmail is present
       if (form.receiverEmail && form.title) {
         console.log(`Attempting to send email to: ${form.receiverEmail} for form: ${form.title}`);
         const emailResult = await sendFormSubmissionEmail({
           to: form.receiverEmail,
           formTitle: form.title,
           responseData: formResponses,
+          questions: form.questions, // Pass questions array
         });
         console.log('Email send result:', emailResult);
         if (!emailResult.success) {
@@ -186,11 +196,32 @@ export default function PublicFormPage() {
           });
         }
       } else {
-        console.log('No valid email notification configured or title missing for this form. Skipping notification.', {
+         console.log('No valid email notification configured or title missing for this form. Skipping email notification.', {
             receiverEmail: form.receiverEmail, 
             title: form.title 
         });
       }
+      
+      // If you re-introduce Discord notifications, the logic would be here:
+      // if (form.notificationDestination === 'discord' && form.discordWebhookUrl && form.title) {
+      //   console.log(`Attempting to send Discord notification for form: ${form.title}`);
+      //   const discordResult = await sendDiscordNotification(
+      //     form.discordWebhookUrl,
+      //     form.title,
+      //     formResponses,
+      //     form.questions // Pass questions array
+      //   );
+      //   console.log('Discord send result:', discordResult);
+      //   if (!discordResult.success) {
+      //     toast({
+      //       title: "Notification Issue (Discord)",
+      //       description: `Form submitted, but Discord notification failed: ${discordResult.message || 'Unknown error.'}. Please check server logs.`,
+      //       variant: "default",
+      //       duration: 8000,
+      //     });
+      //   }
+      // }
+
       setFormResponses({}); 
     } catch (submissionError) {
       console.error("Failed to submit form response to Firestore:", submissionError);
@@ -374,5 +405,3 @@ export default function PublicFormPage() {
     </PublicFormLayout>
   );
 }
-
-    
