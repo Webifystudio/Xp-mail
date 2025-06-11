@@ -1,3 +1,4 @@
+
 "use client"
 
 import * as React from "react"
@@ -10,7 +11,7 @@ import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Separator } from "@/components/ui/separator"
-import { Sheet, SheetContent } from "@/components/ui/sheet"
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet" // Added SheetHeader, SheetTitle
 import { Skeleton } from "@/components/ui/skeleton"
 import {
   Tooltip,
@@ -206,7 +207,13 @@ const Sidebar = React.forwardRef<
             }
             side={side}
           >
-            <div className="flex h-full w-full flex-col">{children}</div>
+            {/* Added SheetHeader and SheetTitle for accessibility */}
+            <SheetHeader className="p-4 border-b border-sidebar-border/50">
+              <SheetTitle className="text-lg font-semibold text-sidebar-foreground">Menu</SheetTitle>
+            </SheetHeader>
+            <div className="flex h-full w-full flex-col overflow-y-auto">
+                {children}
+            </div>
           </SheetContent>
         </Sheet>
       )
@@ -761,3 +768,5 @@ export {
   SidebarTrigger,
   useSidebar,
 }
+
+    
