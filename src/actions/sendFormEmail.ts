@@ -10,6 +10,8 @@ interface EmailPayload {
 }
 
 export async function sendFormSubmissionEmail({ to, formTitle, responseData }: EmailPayload): Promise<{ success: boolean; message: string }> {
+  // IMPORTANT: THESE ARE HARDCODED CREDENTIALS FOR DEMONSTRATION.
+  // REPLACE WITH ENVIRONMENT VARIABLES (process.env.EMAIL_USER, process.env.EMAIL_PASS) IN PRODUCTION.
   const emailUser = "xpnetwork.tech@gmail.com"; 
   const emailPass = "luic ekcp dfbh nakd";   
 
@@ -29,19 +31,21 @@ export async function sendFormSubmissionEmail({ to, formTitle, responseData }: E
   let questionsAndAnswersHtml = '';
   if (Object.keys(responseData).length > 0) {
     for (const [question, answer] of Object.entries(responseData)) {
-      const sanitizedQuestion = question.replace(/</g, "&lt;").replace(/>/g, "&gt;");
+      // Sanitize to prevent HTML injection
+      const sanitizedQuestion = String(question).replace(/</g, "&lt;").replace(/>/g, "&gt;");
       const sanitizedAnswer = Array.isArray(answer) 
         ? answer.map(a => String(a).replace(/</g, "&lt;").replace(/>/g, "&gt;")).join(', ') 
         : String(answer).replace(/</g, "&lt;").replace(/>/g, "&gt;");
+      
       questionsAndAnswersHtml += `
         <tr>
-          <td style="padding: 8px; border: 1px solid #ddd; font-weight: bold; background-color: #f9f9f9; vertical-align: top; width: 30%;">${sanitizedQuestion}</td>
-          <td style="padding: 8px; border: 1px solid #ddd; vertical-align: top;">${sanitizedAnswer}</td>
+          <td style="padding: 10px 12px; border-bottom: 1px solid #eeeeee; font-weight: bold; background-color: #f9f9f9; vertical-align: top; width: 35%; color: #333333;">${sanitizedQuestion}</td>
+          <td style="padding: 10px 12px; border-bottom: 1px solid #eeeeee; vertical-align: top; color: #555555;">${sanitizedAnswer}</td>
         </tr>
       `;
     }
   } else {
-    questionsAndAnswersHtml = `<tr><td colspan="2" style="padding: 8px; border: 1px solid #ddd; text-align: center;">No questions were answered or the form was empty.</td></tr>`;
+    questionsAndAnswersHtml = `<tr><td colspan="2" style="padding: 12px; border-bottom: 1px solid #eeeeee; text-align: center; color: #777777;">No questions were answered or the form was empty.</td></tr>`;
   }
 
   const emailHtml = `
@@ -50,43 +54,59 @@ export async function sendFormSubmissionEmail({ to, formTitle, responseData }: E
     <head>
       <meta charset="UTF-8">
       <meta name="viewport" content="width=device-width, initial-scale=1.0">
-      <title>New Form Submission: ${formTitle}</title>
+      <title>New Form Submission: ${formTitle.replace(/</g, "&lt;").replace(/>/g, "&gt;")}</title>
       <style>
-        body { font-family: Arial, sans-serif; margin: 0; padding: 0; background-color: #f4f4f4; color: #333; }
-        .container { max-width: 600px; margin: 20px auto; background-color: #ffffff; border-radius: 8px; box-shadow: 0 0 10px rgba(0,0,0,0.1); overflow: hidden; }
-        .header { background-color: #4A90E2; /* A pleasant blue */ color: #ffffff; padding: 20px; text-align: center; }
-        .header h1 { margin: 0; font-size: 24px; }
-        .content { padding: 20px; }
-        .content p { line-height: 1.6; }
-        .form-data-table { width: 100%; border-collapse: collapse; margin-top: 20px; }
-        .form-data-table th, .form-data-table td { text-align: left; }
-        .footer { background-color: #f0f0f0; color: #777; padding: 15px; text-align: center; font-size: 12px; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol'; margin: 0; padding: 0; background-color: #f4f7f6; color: #333333; -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
+        .email-container { max-width: 680px; margin: 20px auto; background-color: #ffffff; border-radius: 8px; box-shadow: 0 4px 15px rgba(0,0,0,0.07); overflow: hidden; border: 1px solid #dddddd; }
+        .email-header { background-color: #4A90E2; /* Consider your app's primary color */ color: #ffffff; padding: 25px 30px; text-align: center; border-bottom: 4px solid #3a7bc8; }
+        .email-header h1 { margin: 0; font-size: 26px; font-weight: 600; }
+        .email-content { padding: 25px 30px; }
+        .email-content p { line-height: 1.65; margin: 0 0 15px 0; font-size: 16px; }
+        .email-content strong { color: #2c3e50; }
+        .form-data-table { width: 100%; border-collapse: collapse; margin-top: 20px; table-layout: fixed; }
+        .form-data-table th, .form-data-table td { text-align: left; font-size: 15px; }
+        .form-data-table th {
+          background-color: #eaf2f8; /* Light blueish gray for header */
+          color: #34495e;
+          padding: 12px;
+          border-bottom: 2px solid #d5e5f0;
+          font-weight: 600;
+        }
+        /* Question/Answer rows handled by inline styles in questionsAndAnswersHtml for better client compatibility */
+        .footer { background-color: #f0f2f5; color: #888888; padding: 20px 30px; text-align: center; font-size: 13px; border-top: 1px solid #e1e4e8; }
+        .footer a { color: #4A90E2; text-decoration: none; }
+        @media screen and (max-width: 600px) {
+          .email-container { width: 95% !important; margin: 10px auto !important; }
+          .email-header h1 { font-size: 22px; }
+          .email-content { padding: 20px; }
+          .form-data-table td, .form-data-table th { font-size: 14px; padding: 8px 10px;}
+        }
       </style>
     </head>
     <body>
-      <div class="container">
-        <div class="header">
+      <div class="email-container">
+        <div class="email-header">
           <h1>New Form Submission</h1>
         </div>
-        <div class="content">
+        <div class="email-content">
           <p>Hello,</p>
           <p>You've received a new submission for your form: <strong>${formTitle.replace(/</g, "&lt;").replace(/>/g, "&gt;")}</strong>.</p>
           <p>Below are the details of the response:</p>
-          <table class="form-data-table" style="width: 100%; border-collapse: collapse; margin-top: 20px;">
+          <table class="form-data-table">
             <thead>
               <tr>
-                <th style="padding: 10px; border: 1px solid #ddd; background-color: #e9ecef; text-align: left;">Question</th>
-                <th style="padding: 10px; border: 1px solid #ddd; background-color: #e9ecef; text-align: left;">Answer</th>
+                <th style="width: 35%;">Question</th>
+                <th>Answer</th>
               </tr>
             </thead>
             <tbody>
               ${questionsAndAnswersHtml}
             </tbody>
           </table>
-          <p style="margin-top: 25px;">Thank you for using our service!</p>
+          <p style="margin-top: 30px;">Thank you for using our service!</p>
         </div>
         <div class="footer">
-          Powered by XPMail & Forms
+          Powered by <a href="#">XPMail & Forms</a>
         </div>
       </div>
     </body>

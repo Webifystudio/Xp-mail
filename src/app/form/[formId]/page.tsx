@@ -15,7 +15,7 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Button } from '@/components/ui/button';
 import { Spinner } from '@/components/ui/spinner';
-import { AlertTriangle } from 'lucide-react';
+import { AlertTriangle, CheckCircle2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { sendFormSubmissionEmail } from '@/actions/sendFormEmail';
 import { sendDiscordNotification } from '@/actions/sendDiscordNotification';
@@ -24,7 +24,7 @@ interface PublicFormDisplayData extends Omit<FormSchemaForFirestore, 'createdAt'
   id: string; 
   title: string; 
   questions: Question[]; 
-  createdAt: Timestamp | string; // Can be string after processing
+  createdAt: Timestamp | string; 
   backgroundImageUrl?: string | null;
   notificationDestination?: NotificationDestination;
   receiverEmail?: string | null;
@@ -32,27 +32,40 @@ interface PublicFormDisplayData extends Omit<FormSchemaForFirestore, 'createdAt'
 }
 
 function PublicFormLayout({ children, backgroundImageUrl }: { children: React.ReactNode; backgroundImageUrl?: string | null; }) {
-  const layoutStyle: React.CSSProperties = {};
+  const layoutStyle: React.CSSProperties = {
+    position: 'relative', // Needed for the overlay
+    minHeight: '100vh',
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: '1rem', // p-4
+    backgroundRepeat: 'no-repeat',
+  };
+
   if (backgroundImageUrl) {
     layoutStyle.backgroundImage = `url(${backgroundImageUrl})`;
     layoutStyle.backgroundSize = 'cover';
     layoutStyle.backgroundPosition = 'center';
-    layoutStyle.backgroundAttachment = 'fixed';
+    layoutStyle.backgroundAttachment = 'fixed'; // Keep background fixed during scroll
+  } else {
+    layoutStyle.backgroundColor = 'hsl(var(--muted))'; // Fallback bg
   }
 
   return (
-    <div 
-      className="flex min-h-screen flex-col items-center justify-center bg-muted p-4 selection:bg-primary/20"
-      style={layoutStyle}
-    >
-      <div className="w-full max-w-2xl">
-        {backgroundImageUrl && <div className="absolute inset-0 bg-black/30 backdrop-blur-sm z-0"></div>}
-        <div className="relative z-10">
-          {children}
-        </div>
+    <div style={layoutStyle}>
+      {/* Overlay for readability when background image is present */}
+      {backgroundImageUrl && (
+        <div 
+          className="absolute inset-0 bg-black/40 dark:bg-black/60 backdrop-blur-sm z-0"
+          aria-hidden="true"
+        ></div>
+      )}
+      <div className="w-full max-w-2xl relative z-10"> {/* Content on top of overlay */}
+        {children}
       </div>
-      <footer className="py-6 mt-8 text-center text-sm text-muted-foreground relative z-10">
-        <span className="bg-background/70 px-2 py-1 rounded">Powered by XPMail & Forms</span>
+      <footer className="py-6 mt-8 text-center text-sm relative z-10">
+        <span className="bg-background/80 dark:bg-background/90 text-muted-foreground px-3 py-1.5 rounded-md shadow">Powered by XPMail & Forms</span>
       </footer>
     </div>
   );
@@ -94,7 +107,7 @@ export default function PublicFormPage() {
               id: data.id || formId, 
               title: data.title || 'Untitled Form', 
               questions: typedQuestions, 
-              createdAt: data.createdAt, // Keep as Timestamp or convert if needed for display
+              createdAt: data.createdAt, 
               backgroundImageUrl: data.backgroundImageUrl || null, 
               notificationDestination: data.notificationDestination || "none",
               receiverEmail: data.receiverEmail || null,
@@ -137,6 +150,22 @@ export default function PublicFormPage() {
     setIsSubmitting(true);
     setSubmissionMessage(null);
     
+    // Validate required fields
+    for (const question of form.questions) {
+      if (question.isRequired) {
+        const response = formResponses[question.id || question.text];
+        if (response === undefined || response === null || (Array.isArray(response) && response.length === 0) || (typeof response === 'string' && response.trim() === '')) {
+          toast({
+            title: "Missing Required Field",
+            description: `Please answer the question: "${question.text}"`,
+            variant: "destructive",
+          });
+          setIsSubmitting(false);
+          return;
+        }
+      }
+    }
+    
     try {
       await saveFormResponse(formId, formResponses);
       console.log('Form Responses Saved to Firestore:', formResponses);
@@ -159,10 +188,10 @@ export default function PublicFormPage() {
         console.log('Email send result:', emailResult);
         if (!emailResult.success) {
            toast({
-            title: "Notification Email Issue",
-            description: `Form submitted, but email notification failed: ${emailResult.message || 'Unknown error.'}`,
+            title: "Notification Issue (Email)",
+            description: `Form submitted, but email notification failed: ${emailResult.message || 'Unknown error.'}. Please check server logs.`,
             variant: "default", 
-            duration: 7000,
+            duration: 8000,
           });
         }
       } else if (form.notificationDestination === "discord" && form.discordWebhookUrl && form.title) {
@@ -175,10 +204,10 @@ export default function PublicFormPage() {
         console.log('Discord notification send result:', discordResult);
         if (!discordResult.success) {
            toast({
-            title: "Discord Notification Issue",
-            description: `Form submitted, but Discord notification failed: ${discordResult.message || 'Unknown error.'}`,
+            title: "Notification Issue (Discord)",
+            description: `Form submitted, but Discord notification failed: ${discordResult.message || 'Unknown error.'}. Please check server logs.`,
             variant: "default", 
-            duration: 7000,
+            duration: 8000,
           });
         }
       } else {
@@ -203,9 +232,9 @@ export default function PublicFormPage() {
   if (loading) {
     return (
       <PublicFormLayout>
-        <div className="flex flex-col items-center justify-center h-64">
+        <div className="flex flex-col items-center justify-center min-h-[300px]">
           <Spinner size={48} />
-          <p className="mt-4 text-muted-foreground bg-background/70 px-2 py-1 rounded">Loading form...</p>
+          <p className="mt-4 text-muted-foreground bg-background/70 dark:bg-background/90 px-3 py-1.5 rounded-md shadow">Loading form...</p>
         </div>
       </PublicFormLayout>
     );
@@ -214,13 +243,13 @@ export default function PublicFormPage() {
   if (error) {
     return (
        <PublicFormLayout>
-        <Card className="shadow-lg bg-card/90 backdrop-blur-sm">
+        <Card className="shadow-lg bg-card/90 dark:bg-card/95 backdrop-blur-md">
           <CardHeader className="items-center">
             <AlertTriangle className="w-12 h-12 text-destructive mb-2" />
             <CardTitle className="text-2xl text-destructive">Error Loading Form</CardTitle>
           </CardHeader>
           <CardContent className="text-center">
-            <p className="text-muted-foreground">{error}</p>
+            <p className="text-card-foreground/80">{error}</p>
           </CardContent>
         </Card>
       </PublicFormLayout>
@@ -230,13 +259,13 @@ export default function PublicFormPage() {
   if (!form) { 
      return (
        <PublicFormLayout>
-        <Card className="shadow-lg bg-card/90 backdrop-blur-sm">
+        <Card className="shadow-lg bg-card/90 dark:bg-card/95 backdrop-blur-md">
           <CardHeader className="items-center">
              <AlertTriangle className="w-12 h-12 text-destructive mb-2" />
             <CardTitle className="text-2xl">Form Not Found</CardTitle>
           </CardHeader>
            <CardContent className="text-center">
-            <p className="text-muted-foreground">The requested form could not be found or may have been deleted.</p>
+            <p className="text-card-foreground/80">The requested form could not be found or may have been deleted.</p>
           </CardContent>
         </Card>
       </PublicFormLayout>
@@ -246,16 +275,14 @@ export default function PublicFormPage() {
   if (submissionMessage && submissionMessage.startsWith('Thank you')) {
     return (
       <PublicFormLayout backgroundImageUrl={form.backgroundImageUrl}>
-        <Card className="shadow-xl w-full bg-card/90 backdrop-blur-sm">
-          <CardHeader>
+        <Card className="shadow-xl w-full bg-card/90 dark:bg-card/95 backdrop-blur-md">
+          <CardHeader className="items-center">
             <CardTitle className="text-3xl font-headline text-center">{form.title}</CardTitle>
           </CardHeader>
           <CardContent className="text-center py-10">
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-16 w-16 text-green-500 mx-auto mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
+            <CheckCircle2 className="h-16 w-16 text-green-500 mx-auto mb-4" />
             <p className="text-xl font-semibold">{submissionMessage}</p>
-            <p className="text-muted-foreground mt-2">You can now close this page.</p>
+            <p className="text-card-foreground/80 mt-2">You can now close this page.</p>
           </CardContent>
         </Card>
       </PublicFormLayout>
@@ -264,11 +291,11 @@ export default function PublicFormPage() {
 
   return (
     <PublicFormLayout backgroundImageUrl={form.backgroundImageUrl}>
-      <Card className="shadow-xl w-full bg-card/90 backdrop-blur-sm">
+      <Card className="shadow-xl w-full bg-card/90 dark:bg-card/95 backdrop-blur-md selection:bg-primary/20">
         <CardHeader>
           <CardTitle className="text-3xl font-headline text-center">{form.title}</CardTitle>
           {form.questions.length > 0 && (
-             <CardDescription className="text-center pt-2">Please fill out the form below.</CardDescription>
+             <CardDescription className="text-center pt-2 text-card-foreground/80">Please fill out the form below.</CardDescription>
           )}
           {form.questions.length === 0 && (
              <CardDescription className="text-center pt-2 text-destructive">This form currently has no questions.</CardDescription>
@@ -283,8 +310,8 @@ export default function PublicFormPage() {
           {form.questions.length > 0 ? (
             <form onSubmit={handleSubmit} className="space-y-6">
               {form.questions.map((q) => (
-                <div key={q.id || q.text} className="p-5 border rounded-lg bg-background/80 shadow-lg backdrop-blur-sm transition-all hover:shadow-xl">
-                  <Label htmlFor={q.id || q.text} className="block text-md font-semibold mb-3 text-foreground">
+                <div key={q.id || q.text} className="p-4 sm:p-5 border rounded-lg bg-background/80 dark:bg-background/70 shadow-md hover:shadow-lg backdrop-blur-sm transition-all">
+                  <Label htmlFor={q.id || q.text} className="block text-md font-semibold mb-3 text-foreground dark:text-foreground">
                     {q.text}
                     {q.isRequired && <span className="text-destructive ml-1">*</span>}
                   </Label>
@@ -295,7 +322,7 @@ export default function PublicFormPage() {
                       required={q.isRequired}
                       onChange={(e) => handleInputChange(q.id || q.text, e.target.value)}
                       value={formResponses[q.id || q.text] || ''}
-                      className="bg-white/70 dark:bg-black/20"
+                      className="bg-white/70 dark:bg-black/20 border-input focus:border-primary"
                     />
                   )}
                   {q.type === 'email' && (
@@ -305,7 +332,7 @@ export default function PublicFormPage() {
                       required={q.isRequired}
                       onChange={(e) => handleInputChange(q.id || q.text, e.target.value)}
                       value={formResponses[q.id || q.text] || ''}
-                       className="bg-white/70 dark:bg-black/20"
+                       className="bg-white/70 dark:bg-black/20 border-input focus:border-primary"
                     />
                   )}
                   {q.type === 'number' && (
@@ -315,7 +342,7 @@ export default function PublicFormPage() {
                       required={q.isRequired}
                       onChange={(e) => handleInputChange(q.id || q.text, e.target.value)}
                       value={formResponses[q.id || q.text] || ''}
-                       className="bg-white/70 dark:bg-black/20"
+                       className="bg-white/70 dark:bg-black/20 border-input focus:border-primary"
                     />
                   )}
                   {q.type === 'textarea' && ( 
@@ -324,7 +351,8 @@ export default function PublicFormPage() {
                       required={q.isRequired}
                       onChange={(e) => handleInputChange(q.id || q.text, e.target.value)}
                       value={formResponses[q.id || q.text] || ''}
-                      className="bg-white/70 dark:bg-black/20"
+                      className="bg-white/70 dark:bg-black/20 border-input focus:border-primary"
+                      rows={4}
                     />
                   )}
                   {q.type === 'multiple-choice' && q.options && (
@@ -335,9 +363,9 @@ export default function PublicFormPage() {
                       className="space-y-2"
                     >
                       {q.options.map((opt) => (
-                        <div key={opt.id || opt.value} className="flex items-center space-x-3 p-3 bg-white/50 dark:bg-black/10 hover:bg-primary/10 rounded-md transition-colors cursor-pointer">
+                        <div key={opt.id || opt.value} className="flex items-center space-x-3 p-3 bg-white/50 dark:bg-black/10 hover:bg-primary/10 dark:hover:bg-primary/20 rounded-md transition-colors cursor-pointer border border-transparent hover:border-primary/30">
                           <RadioGroupItem value={opt.value} id={`${q.id || q.text}-${opt.id || opt.value}`} />
-                          <Label htmlFor={`${q.id || q.text}-${opt.id || opt.value}`} className="font-normal cursor-pointer flex-1 text-foreground/90">{opt.value}</Label>
+                          <Label htmlFor={`${q.id || q.text}-${opt.id || opt.value}`} className="font-normal cursor-pointer flex-1 text-foreground/90 dark:text-foreground/80">{opt.value}</Label>
                         </div>
                       ))}
                     </RadioGroup>
@@ -345,13 +373,13 @@ export default function PublicFormPage() {
                   {q.type === 'checkbox' && q.options && (
                     <div className="space-y-2">
                       {q.options.map((opt) => (
-                        <div key={opt.id || opt.value} className="flex items-center space-x-3 p-3 bg-white/50 dark:bg-black/10 hover:bg-primary/10 rounded-md transition-colors cursor-pointer">
+                        <div key={opt.id || opt.value} className="flex items-center space-x-3 p-3 bg-white/50 dark:bg-black/10 hover:bg-primary/10 dark:hover:bg-primary/20 rounded-md transition-colors cursor-pointer border border-transparent hover:border-primary/30">
                           <Checkbox
                             id={`${q.id || q.text}-${opt.id || opt.value}`}
                             onCheckedChange={(checked) => handleCheckboxChange(q.id || q.text, opt.value, !!checked)}
                             checked={(formResponses[q.id || q.text] || []).includes(opt.value)}
                           />
-                          <Label htmlFor={`${q.id || q.text}-${opt.id || opt.value}`} className="font-normal cursor-pointer flex-1 text-foreground/90">{opt.value}</Label>
+                          <Label htmlFor={`${q.id || q.text}-${opt.id || opt.value}`} className="font-normal cursor-pointer flex-1 text-foreground/90 dark:text-foreground/80">{opt.value}</Label>
                         </div>
                       ))}
                     </div>
@@ -365,7 +393,7 @@ export default function PublicFormPage() {
             </form>
           ) : (
              <div className="text-center py-10">
-                <p className="text-muted-foreground">This form doesn't have any questions yet. Please check back later.</p>
+                <p className="text-card-foreground/80">This form doesn't have any questions yet. Please check back later.</p>
             </div>
           )}
         </CardContent>

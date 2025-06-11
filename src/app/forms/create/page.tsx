@@ -19,7 +19,7 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { useForm, useFieldArray, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
-import { PlusCircle, Trash2, AlertCircle, UploadCloud, Image as ImageIcon, Mail as MailIcon, MessageSquare, Webhook } from "lucide-react";
+import { PlusCircle, Trash2, AlertCircle, UploadCloud, ImageIcon, Mail as MailIcon, MessageSquare, Webhook, XCircle } from "lucide-react";
 import { Spinner } from "@/components/ui/spinner";
 import { saveForm } from "@/services/formService";
 import { useToast } from "@/hooks/use-toast";
@@ -50,8 +50,8 @@ const formBuilderSchema = z.object({
   questions: z.array(questionSchema).min(1, "Add at least one question to the form."),
   backgroundImageUrl: z.string().url("Must be a valid URL").optional().nullable(),
   notificationDestination: z.enum(["none", "email", "discord"]).default("none"),
-  receiverEmail: z.string().optional(),
-  discordWebhookUrl: z.string().optional(),
+  receiverEmail: z.string().optional().nullable(),
+  discordWebhookUrl: z.string().url().optional().nullable(),
 }).superRefine((data, ctx) => {
   if (data.notificationDestination === "email") {
     if (!data.receiverEmail || data.receiverEmail.trim() === "") {
@@ -75,13 +75,8 @@ const formBuilderSchema = z.object({
         message: "Discord webhook URL is required for Discord notifications.",
         path: ["discordWebhookUrl"],
       });
-    } else if (!z.string().url().safeParse(data.discordWebhookUrl).success) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "Invalid Discord webhook URL format.",
-        path: ["discordWebhookUrl"],
-      });
     }
+    // URL validation is already handled by z.string().url() for discordWebhookUrl
   }
 });
 
@@ -116,6 +111,7 @@ export default function CreateFormPage() {
   });
 
   const notificationDestination = form.watch("notificationDestination");
+  const currentBackgroundImageUrl = form.watch("backgroundImageUrl");
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -126,7 +122,14 @@ export default function CreateFormPage() {
 
   const handleBgImageSelect = (event: ChangeEvent<HTMLInputElement>) => {
     if (event.target.files && event.target.files[0]) {
-      setBgImageFile(event.target.files[0]);
+      const file = event.target.files[0];
+      if (file.size > 4 * 1024 * 1024) { // 4MB limit
+        setBgImageError("Image size should not exceed 4MB.");
+        setBgImageFile(null);
+        if (event.target) event.target.value = ''; // Reset file input
+        return;
+      }
+      setBgImageFile(file);
       setBgImageError(null);
     }
   };
@@ -140,9 +143,11 @@ export default function CreateFormPage() {
     setBgImageError(null);
     try {
       const imageUrl = await uploadToImgBB(IMG_BB_API_KEY, bgImageFile);
-      form.setValue("backgroundImageUrl", imageUrl);
+      form.setValue("backgroundImageUrl", imageUrl, { shouldValidate: true });
       toast({ title: "Background Image Uploaded!", description: "The image is ready to be saved with the form." });
       setBgImageFile(null); 
+      const fileInput = document.getElementById('bg-image-upload') as HTMLInputElement;
+      if (fileInput) fileInput.value = ''; // Reset file input
     } catch (error) {
       const errMsg = error instanceof Error ? error.message : "Unknown error during upload.";
       setBgImageError(errMsg);
@@ -150,6 +155,14 @@ export default function CreateFormPage() {
     } finally {
       setIsUploadingBg(false);
     }
+  };
+
+  const removeBackgroundImage = () => {
+    form.setValue("backgroundImageUrl", null, { shouldValidate: true });
+    setBgImageFile(null);
+    const fileInput = document.getElementById('bg-image-upload') as HTMLInputElement;
+    if (fileInput) fileInput.value = ''; // Reset file input
+    toast({ title: "Background Image Removed."});
   };
 
   if (authLoading || !user) {
@@ -177,20 +190,11 @@ export default function CreateFormPage() {
         id: q.id || crypto.randomUUID(),
         options: q.options?.map(opt => ({ ...opt, id: opt.id || crypto.randomUUID() }))
       })),
-      backgroundImageUrl: data.backgroundImageUrl || undefined,
+      backgroundImageUrl: data.backgroundImageUrl || null,
       notificationDestination: data.notificationDestination,
+      receiverEmail: data.notificationDestination === "email" ? data.receiverEmail : null,
+      discordWebhookUrl: data.notificationDestination === "discord" ? data.discordWebhookUrl : null,
     };
-
-    if (data.notificationDestination === "email" && data.receiverEmail) {
-      processedData.receiverEmail = data.receiverEmail;
-    } else {
-      processedData.receiverEmail = undefined; 
-    }
-    if (data.notificationDestination === "discord" && data.discordWebhookUrl) {
-      processedData.discordWebhookUrl = data.discordWebhookUrl;
-    } else {
-      processedData.discordWebhookUrl = undefined;
-    }
     
     try {
       const formId = await saveForm(user.uid, processedData);
@@ -204,6 +208,8 @@ export default function CreateFormPage() {
         receiverEmail: "",
         discordWebhookUrl: ""
       });
+      const fileInput = document.getElementById('bg-image-upload') as HTMLInputElement;
+      if (fileInput) fileInput.value = ''; // Reset file input on successful form save too
     } catch (error) {
       console.error("Failed to save form:", error);
       toast({ title: "Error", description: (error as Error).message || "Could not save the form. Please try again.", variant: "destructive" });
@@ -212,7 +218,6 @@ export default function CreateFormPage() {
     }
   };
 
-  const currentBackgroundImageUrl = form.watch("backgroundImageUrl");
 
   return (
     <AppLayout>
@@ -263,31 +268,30 @@ export default function CreateFormPage() {
                                 <RadioGroup
                                 onValueChange={(value) => {
                                     field.onChange(value);
-                                    if (value !== 'email') form.setValue('receiverEmail', '');
-                                    if (value !== 'discord') form.setValue('discordWebhookUrl', '');
-                                    form.clearErrors('receiverEmail');
-                                    form.clearErrors('discordWebhookUrl');
+                                    // Clear other fields and errors when selection changes
+                                    if (value !== 'email') form.setValue('receiverEmail', '', { shouldValidate: true });
+                                    if (value !== 'discord') form.setValue('discordWebhookUrl', '', { shouldValidate: true });
                                 }}
                                 value={field.value}
                                 className="flex flex-col sm:flex-row sm:space-x-4 space-y-2 sm:space-y-0"
                                 >
                                 <FormItem className="flex items-center space-x-2 space-y-0">
                                     <FormControl>
-                                    <RadioGroupItem value="none" />
+                                    <RadioGroupItem value="none" id="notify-none"/>
                                     </FormControl>
-                                    <FormLabel className="font-normal">None</FormLabel>
+                                    <FormLabel htmlFor="notify-none" className="font-normal">None</FormLabel>
                                 </FormItem>
                                 <FormItem className="flex items-center space-x-2 space-y-0">
                                     <FormControl>
-                                    <RadioGroupItem value="email" />
+                                    <RadioGroupItem value="email" id="notify-email"/>
                                     </FormControl>
-                                    <FormLabel className="font-normal flex items-center"><MailIcon className="mr-1 h-4 w-4"/>Email</FormLabel>
+                                    <FormLabel htmlFor="notify-email" className="font-normal flex items-center"><MailIcon className="mr-1 h-4 w-4"/>Email</FormLabel>
                                 </FormItem>
                                 <FormItem className="flex items-center space-x-2 space-y-0">
                                     <FormControl>
-                                    <RadioGroupItem value="discord" />
+                                    <RadioGroupItem value="discord" id="notify-discord"/>
                                     </FormControl>
-                                    <FormLabel className="font-normal flex items-center"><Webhook className="mr-1 h-4 w-4"/>Discord</FormLabel>
+                                    <FormLabel htmlFor="notify-discord" className="font-normal flex items-center"><Webhook className="mr-1 h-4 w-4"/>Discord</FormLabel>
                                 </FormItem>
                                 </RadioGroup>
                             </FormControl>
@@ -350,6 +354,7 @@ export default function CreateFormPage() {
                     <CardTitle className="text-lg font-semibold flex items-center">
                         <ImageIcon className="mr-2 h-5 w-5 text-primary" /> Form Background Image (Optional)
                     </CardTitle>
+                    <CardDescription>Max file size: 4MB.</CardDescription>
                 </CardHeader>
                 <CardContent className="p-0 space-y-3">
                     <div className="space-y-1">
@@ -357,9 +362,9 @@ export default function CreateFormPage() {
                         <Input 
                             id="bg-image-upload" 
                             type="file" 
-                            accept="image/*" 
+                            accept="image/jpeg,image/png,image/gif,image/webp" 
                             onChange={handleBgImageSelect} 
-                            className="text-sm"
+                            className="text-sm file:mr-2 file:py-1 file:px-2 file:rounded-full file:border-0 file:text-xs file:bg-muted file:text-muted-foreground hover:file:bg-primary/10"
                         />
                         {bgImageFile && <p className="text-xs text-muted-foreground">Selected: {bgImageFile.name}</p>}
                     </div>
@@ -379,19 +384,26 @@ export default function CreateFormPage() {
                         {isUploadingBg ? "Uploading..." : "Upload Background"}
                     </Button>
                     {currentBackgroundImageUrl && (
-                        <div className="mt-2">
-                            <Label className="text-sm">Background Preview:</Label>
-                            <div className="mt-1 w-full h-32 rounded border overflow-hidden relative bg-slate-200">
-                                <Image src={currentBackgroundImageUrl} alt="Background preview" layout="fill" objectFit="cover" />
+                        <div className="mt-3 pt-3 border-t">
+                            <Label className="text-sm font-medium block mb-1">Current Background:</Label>
+                            <div className="w-full aspect-video rounded border overflow-hidden relative bg-slate-200 dark:bg-slate-700">
+                                <Image 
+                                  src={currentBackgroundImageUrl} 
+                                  alt="Background preview" 
+                                  layout="fill" 
+                                  objectFit="cover" 
+                                  className="rounded"
+                                  unoptimized={currentBackgroundImageUrl.startsWith('https://i.ibb.co')} // Avoid Next.js optimization for external ImgBB URLs if issues arise
+                                />
                             </div>
                              <Button 
                                 type="button" 
                                 variant="link" 
                                 size="sm" 
-                                className="text-xs text-destructive p-0 h-auto mt-1"
-                                onClick={() => form.setValue("backgroundImageUrl", null)}
+                                className="text-xs text-destructive p-0 h-auto mt-1 flex items-center"
+                                onClick={removeBackgroundImage}
                               >
-                                Remove Background Image
+                                <XCircle className="mr-1 h-3 w-3"/> Remove Background Image
                               </Button>
                         </div>
                     )}
@@ -419,11 +431,11 @@ export default function CreateFormPage() {
                         type="button"
                         variant="ghost"
                         size="icon"
-                        className="absolute top-2 right-2 text-muted-foreground hover:text-destructive"
+                        className="absolute top-2 right-2 text-muted-foreground hover:text-destructive z-10"
                         onClick={() => removeQuestion(index)}
+                        aria-label="Remove Question"
                       >
                         <Trash2 className="h-5 w-5" />
-                        <span className="sr-only">Remove Question</span>
                       </Button>
                     <FormField
                       control={form.control}
@@ -463,6 +475,7 @@ export default function CreateFormPage() {
                                 <SelectItem value="text">Short Text</SelectItem>
                                 <SelectItem value="email">Email</SelectItem>
                                 <SelectItem value="number">Number</SelectItem>
+                                <SelectItem value="textarea">Long Text (Textarea)</SelectItem>
                                 <SelectItem value="multiple-choice">Multiple Choice</SelectItem>
                                 <SelectItem value="checkbox">Checkboxes</SelectItem>
                               </SelectContent>
@@ -480,10 +493,11 @@ export default function CreateFormPage() {
                                 <Checkbox
                                   checked={field.value}
                                   onCheckedChange={field.onChange}
+                                  id={`required-${index}`}
                                 />
                               </FormControl>
                               <div className="space-y-1 leading-none">
-                                <FormLabel>
+                                <FormLabel htmlFor={`required-${index}`}>
                                   Required
                                 </FormLabel>
                               </div>
@@ -549,9 +563,8 @@ function QuestionOptionsArray({ questionIndex, control }: { questionIndex: numbe
               </FormItem>
             )}
           />
-          <Button type="button" variant="ghost" size="icon" onClick={() => remove(optionIndex)} className="text-muted-foreground hover:text-destructive">
+          <Button type="button" variant="ghost" size="icon" onClick={() => remove(optionIndex)} className="text-muted-foreground hover:text-destructive" aria-label="Remove Option">
             <Trash2 className="h-4 w-4" />
-             <span className="sr-only">Remove Option</span>
           </Button>
         </div>
       ))}
