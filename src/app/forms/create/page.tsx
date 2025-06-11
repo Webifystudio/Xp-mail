@@ -2,7 +2,7 @@
 "use client";
 
 import type { ChangeEvent } from 'react';
-import { useEffect, useState } from "react";
+import { useEffect, useState } from "react"; // Ensure useEffect is imported
 import { useRouter } from "next/navigation";
 import Image from 'next/image';
 import { useAuth } from "@/hooks/useAuth";
@@ -109,7 +109,7 @@ export default function CreateFormPage() {
     name: "questions",
   });
 
-  const notificationDestination = form.watch("notificationDestination");
+  const watchedNotificationDestination = form.watch("notificationDestination");
   const currentBackgroundImageUrl = form.watch("backgroundImageUrl");
 
   useEffect(() => {
@@ -117,6 +117,19 @@ export default function CreateFormPage() {
       router.push("/login");
     }
   }, [user, authLoading, router]);
+
+  useEffect(() => {
+    // When notificationDestination changes, clear the irrelevant field.
+    // Validation will be handled by Zod schema on submit or blur.
+    if (watchedNotificationDestination === "email") {
+      form.setValue('discordWebhookUrl', '', { shouldValidate: false });
+    } else if (watchedNotificationDestination === "discord") {
+      form.setValue('receiverEmail', '', { shouldValidate: false });
+    } else { // "none" or other cases
+      form.setValue('receiverEmail', '', { shouldValidate: false });
+      form.setValue('discordWebhookUrl', '', { shouldValidate: false });
+    }
+  }, [watchedNotificationDestination, form]);
 
 
   const handleBgImageSelect = (event: ChangeEvent<HTMLInputElement>) => {
@@ -185,7 +198,14 @@ export default function CreateFormPage() {
     setFormLink(null);
     console.log("[CreateFormPage] Form data received by onSubmit:", JSON.stringify(data, null, 2));
 
-    const processedData = {
+    const processedData: {
+      title: string;
+      questions: Question[];
+      backgroundImageUrl: string | null;
+      notificationDestination: "none" | "email" | "discord";
+      receiverEmail: string | null;
+      discordWebhookUrl: string | null;
+    } = {
       title: data.title,
       questions: data.questions.map(q => ({
         ...q,
@@ -194,8 +214,8 @@ export default function CreateFormPage() {
       })),
       backgroundImageUrl: data.backgroundImageUrl || null,
       notificationDestination: data.notificationDestination || "none",
-      receiverEmail: null as string | null,
-      discordWebhookUrl: null as string | null,
+      receiverEmail: null, // Initialize to null
+      discordWebhookUrl: null, // Initialize to null
     };
 
     if (processedData.notificationDestination === "email") {
@@ -279,13 +299,9 @@ export default function CreateFormPage() {
                             <FormLabel>Send notifications to:</FormLabel>
                             <FormControl>
                                 <RadioGroup
-                                onValueChange={(value) => {
-                                    field.onChange(value);
-                                    if (value !== 'email') form.setValue('receiverEmail', '', { shouldValidate: true });
-                                    if (value !== 'discord') form.setValue('discordWebhookUrl', '', { shouldValidate: true });
-                                }}
-                                value={field.value}
-                                className="flex flex-col sm:flex-row sm:space-x-4 space-y-2 sm:space-y-0"
+                                  onValueChange={field.onChange} // useEffect will handle dependent field updates
+                                  value={field.value}
+                                  className="flex flex-col sm:flex-row sm:space-x-4 space-y-2 sm:space-y-0"
                                 >
                                 <FormItem className="flex items-center space-x-2 space-y-0">
                                     <FormControl>
@@ -312,7 +328,7 @@ export default function CreateFormPage() {
                         )}
                     />
 
-                    {notificationDestination === "email" && (
+                    {watchedNotificationDestination === "email" && (
                         <FormField
                             control={form.control}
                             name="receiverEmail"
@@ -335,7 +351,7 @@ export default function CreateFormPage() {
                         />
                     )}
 
-                    {notificationDestination === "discord" && (
+                    {watchedNotificationDestination === "discord" && (
                         <FormField
                             control={form.control}
                             name="discordWebhookUrl"
@@ -594,3 +610,4 @@ function QuestionOptionsArray({ questionIndex, control }: { questionIndex: numbe
   );
 }
     
+
